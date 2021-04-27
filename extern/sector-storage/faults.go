@@ -67,6 +67,7 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 				filepath.Join(lp.Cache, "p_aux"): 0,
 			}
 
+			// 添加扇区其它的需要检查的路径
 			addCachePathsForSectorSize(toCheck, lp.Cache, ssize)
 
 			for p, sz := range toCheck {

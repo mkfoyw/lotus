@@ -114,7 +114,8 @@ type ChainStore struct {
 	chainLocalBlockstore bstore.Blockstore
 
 	heaviestLk sync.RWMutex
-	heaviest   *types.TipSet
+	// 保存当前区块链中最新的区块
+	heaviest *types.TipSet
 
 	bestTips *pubsub.PubSub
 	pubLk    sync.Mutex
@@ -214,6 +215,7 @@ func (cs *ChainStore) Close() error {
 	return nil
 }
 
+// Load 加载区块链最新的区块
 func (cs *ChainStore) Load() error {
 	head, err := cs.metadataDs.Get(chainHeadKey)
 	if err == dstore.ErrNotFound {
@@ -239,6 +241,7 @@ func (cs *ChainStore) Load() error {
 	return nil
 }
 
+// writeHead 将当前最新的区块的键写入到元数据库中
 func (cs *ChainStore) writeHead(ts *types.TipSet) error {
 	data, err := json.Marshal(ts.Cids())
 	if err != nil {
@@ -252,12 +255,15 @@ func (cs *ChainStore) writeHead(ts *types.TipSet) error {
 	return nil
 }
 
+// 当前区块链接收到一个新的区块可能发生的事件
 const (
 	HCRevert  = "revert"
 	HCApply   = "apply"
 	HCCurrent = "current"
 )
 
+// SubHeadChanges 订阅当前区块链的 HeadChange 事件，  即收到一个新的区块， 该区块能够变成的新最新区块（HCApply）。
+// 或者该区块表示， 链已经发生了分叉（HCRevert）
 func (cs *ChainStore) SubHeadChanges(ctx context.Context) chan []*api.HeadChange {
 	cs.pubLk.Lock()
 	subch := cs.bestTips.Sub("headchange")

@@ -191,12 +191,14 @@ func (s *WindowPoStScheduler) runSubmitPoST(
 	return submitErr
 }
 
+// checkSectors 检查 check 中的未恢复的扇区是否能够恢复， 并返回可以恢复的扇区
 func (s *WindowPoStScheduler) checkSectors(ctx context.Context, check bitfield.BitField, tsk types.TipSetKey) (bitfield.BitField, error) {
 	mid, err := address.IDFromAddress(s.actor)
 	if err != nil {
 		return bitfield.BitField{}, err
 	}
 
+	// 从链上获取扇区的信息
 	sectorInfos, err := s.api.StateMinerSectors(ctx, s.actor, &check, tsk)
 	if err != nil {
 		return bitfield.BitField{}, err
@@ -233,6 +235,7 @@ func (s *WindowPoStScheduler) checkSectors(ctx context.Context, check bitfield.B
 	return sbf, nil
 }
 
+// checkNextRecoveries 开始检查下次能够恢复的扇区.
 func (s *WindowPoStScheduler) checkNextRecoveries(ctx context.Context, dlIdx uint64, partitions []api.Partition, tsk types.TipSetKey) ([]miner.RecoveryDeclaration, *types.SignedMessage, error) {
 	ctx, span := trace.StartSpan(ctx, "storage.checkNextRecoveries")
 	defer span.End()
@@ -242,12 +245,16 @@ func (s *WindowPoStScheduler) checkNextRecoveries(ctx context.Context, dlIdx uin
 		Recoveries: []miner.RecoveryDeclaration{},
 	}
 
+	// 遍历该deadline 的所有扇区信息
+
 	for partIdx, partition := range partitions {
+		// 筛选出可以恢复的扇区
 		unrecovered, err := bitfield.SubtractBitField(partition.FaultySectors, partition.RecoveringSectors)
 		if err != nil {
 			return nil, nil, xerrors.Errorf("subtracting recovered set from fault set: %w", err)
 		}
 
+		// 未恢复的扇区数量
 		uc, err := unrecovered.Count()
 		if err != nil {
 			return nil, nil, xerrors.Errorf("counting unrecovered sectors: %w", err)
@@ -257,6 +264,7 @@ func (s *WindowPoStScheduler) checkNextRecoveries(ctx context.Context, dlIdx uin
 			continue
 		}
 
+		//错误的扇区数量
 		faulty += uc
 
 		recovered, err := s.checkSectors(ctx, unrecovered, tsk)
@@ -419,7 +427,11 @@ func (s *WindowPoStScheduler) runPost(ctx context.Context, di dline.Info, ts *ty
 
 		// check faults / recoveries for the *next* deadline. It's already too
 		// late to declare them for this deadline
+
+		// 检查是否有错误和存在可以恢复的扇区
 		declDeadline := (di.Index + 2) % di.WPoStPeriodDeadlines
+
+		// 获取该deadline 的所有扇区信息
 
 		partitions, err := s.api.StateMinerPartitions(context.TODO(), s.actor, declDeadline, ts.Key())
 		if err != nil {
