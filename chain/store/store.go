@@ -334,6 +334,7 @@ func (cs *ChainStore) UnmarkBlockAsValidated(ctx context.Context, blkid cid.Cid)
 	return nil
 }
 
+// SetGenesis 设置该条链的创世块
 func (cs *ChainStore) SetGenesis(b *types.BlockHeader) error {
 	ts, err := types.NewTipSet([]*types.BlockHeader{b})
 	if err != nil {
@@ -354,6 +355,7 @@ func (cs *ChainStore) PutTipSet(ctx context.Context, ts *types.TipSet) error {
 		}
 	}
 
+	//加载同一个高度的所有BlockHeaer
 	expanded, err := cs.expandTipset(ts.Blocks()[0])
 	if err != nil {
 		return xerrors.Errorf("errored while expanding tipset: %w", err)
@@ -672,6 +674,7 @@ func (cs *ChainStore) Contains(ts *types.TipSet) (bool, error) {
 
 // GetBlock fetches a BlockHeader with the supplied CID. It returns
 // blockstore.ErrNotFound if the block was not found in the BlockStore.
+// GetBlock 根据 cid 获取 blockHeader
 func (cs *ChainStore) GetBlock(c cid.Cid) (*types.BlockHeader, error) {
 	var blk *types.BlockHeader
 	err := cs.chainLocalBlockstore.View(c, func(b []byte) (err error) {
@@ -827,6 +830,7 @@ func (cs *ChainStore) AddToTipSetTracker(b *types.BlockHeader) error {
 	return nil
 }
 
+// PersistBlockHeaders 将 blockHeader 持久化到 `chainLocalBlockstore` 数据库中
 func (cs *ChainStore) PersistBlockHeaders(b ...*types.BlockHeader) error {
 	sbs := make([]block.Block, len(b))
 
@@ -876,6 +880,7 @@ func (cs *ChainStore) PutMessage(m storable) (cid.Cid, error) {
 	return PutMessage(cs.chainBlockstore, m)
 }
 
+// expandTipset 返回与 b 相同的高度的所有  BlockHeader， 并生成一个TipSet对象
 func (cs *ChainStore) expandTipset(b *types.BlockHeader) (*types.TipSet, error) {
 	// Hold lock for the whole function for now, if it becomes a problem we can
 	// fix pretty easily
@@ -1227,6 +1232,8 @@ func (cs *ChainStore) ChainBlockstore() bstore.Blockstore {
 // StateBlockstore returns the state blockstore. Currently the chain and state
 // stores are both backed by the same physical store, albeit with different
 // caching policies, but in the future they will segregate.
+
+// StateBlockstore 返回存储State 树的数据库。
 func (cs *ChainStore) StateBlockstore() bstore.Blockstore {
 	return cs.stateBlockstore
 }

@@ -16,12 +16,14 @@ import (
 
 var zero = types.NewInt(0)
 
+// Weight 计算该tipset 的权重
 func (cs *ChainStore) Weight(ctx context.Context, ts *types.TipSet) (types.BigInt, error) {
 	if ts == nil {
 		return types.NewInt(0), nil
 	}
 	// >>> w[r] <<< + wFunction(totalPowerAtTipset(ts)) * 2^8 + (wFunction(totalPowerAtTipset(ts)) * sum(ts.blocks[].ElectionProof.WinCount) * wRatio_num * 2^8) / (e * wRatio_den)
 
+	//获取该tipset 父亲 tipset 的权重
 	var out = new(big.Int).Set(ts.ParentWeight().Int)
 
 	// >>> wFunction(totalPowerAtTipset(ts)) * 2^8 <<< + (wFunction(totalPowerAtTipset(ts)) * sum(ts.blocks[].ElectionProof.WinCount) * wRatio_num * 2^8) / (e * wRatio_den)
@@ -29,16 +31,20 @@ func (cs *ChainStore) Weight(ctx context.Context, ts *types.TipSet) (types.BigIn
 	tpow := big2.Zero()
 	{
 		cst := cbor.NewCborStore(cs.StateBlockstore())
+
+		//加载父 tipet 的状态树的树根
 		state, err := state.LoadStateTree(cst, ts.ParentState())
 		if err != nil {
 			return types.NewInt(0), xerrors.Errorf("load state tree: %w", err)
 		}
 
+		//获取 StoragePowerActorAddr（4）的actor
 		act, err := state.GetActor(power.Address)
 		if err != nil {
 			return types.NewInt(0), xerrors.Errorf("get power actor: %w", err)
 		}
 
+		// 加载 StoragePowerActor。
 		powState, err := power.Load(cs.ActorStore(ctx), act)
 		if err != nil {
 			return types.NewInt(0), xerrors.Errorf("failed to load power actor state: %w", err)
