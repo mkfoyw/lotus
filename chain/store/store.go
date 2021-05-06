@@ -348,6 +348,7 @@ func (cs *ChainStore) SetGenesis(b *types.BlockHeader) error {
 	return cs.metadataDs.Put(dstore.NewKey("0"), b.Cid().Bytes())
 }
 
+// PutTipSet 放入 tipset 到存储中
 func (cs *ChainStore) PutTipSet(ctx context.Context, ts *types.TipSet) error {
 	for _, b := range ts.Blocks() {
 		if err := cs.PersistBlockHeaders(b); err != nil {
@@ -371,6 +372,7 @@ func (cs *ChainStore) PutTipSet(ctx context.Context, ts *types.TipSet) error {
 // MaybeTakeHeavierTipSet evaluates the incoming tipset and locks it in our
 // internal state as our new head, if and only if it is heavier than the current
 // head and does not exceed the maximum fork length.
+// MaybeTakeHeavierTipSet 判断新的tipset 是否是当前最重的块
 func (cs *ChainStore) MaybeTakeHeavierTipSet(ctx context.Context, ts *types.TipSet) error {
 	cs.heaviestLk.Lock()
 	defer cs.heaviestLk.Unlock()
@@ -412,6 +414,7 @@ func (cs *ChainStore) MaybeTakeHeavierTipSet(ctx context.Context, ts *types.TipS
 // FIXME: We may want to replace some of the logic in `syncFork()` with this.
 //  `syncFork()` counts the length on both sides of the fork at the moment (we
 //  need to settle on that) but here we just enforce it on the `synced` side.
+// 判断两个tipset 是否分叉
 func (cs *ChainStore) exceedsForkLength(synced, external *types.TipSet) (bool, error) {
 	if synced == nil || external == nil {
 		// FIXME: If `cs.heaviest` is nil we should just bypass the entire
@@ -484,6 +487,7 @@ func (cs *ChainStore) ForceHeadSilent(_ context.Context, ts *types.TipSet) error
 	return err
 }
 
+// 链的高度产生变化
 type reorg struct {
 	old *types.TipSet
 	new *types.TipSet
@@ -569,6 +573,7 @@ func (cs *ChainStore) reorgWorker(ctx context.Context, initialNotifees []ReorgNo
 // takeHeaviestTipSet actually sets the incoming tipset as our head both in
 // memory and in the ChainStore. It also sends a notification to deliver to
 // ReorgNotifees.
+// takeHeaviestTipSet 接收到一个更新的块， 通知链接收到新的区块， 并写入新的块到存储。
 func (cs *ChainStore) takeHeaviestTipSet(ctx context.Context, ts *types.TipSet) error {
 	_, span := trace.StartSpan(ctx, "takeHeaviestTipSet")
 	defer span.End()
@@ -651,6 +656,7 @@ func FlushValidationCache(ds datastore.Batching) error {
 
 // SetHead sets the chainstores current 'best' head node.
 // This should only be called if something is broken and needs fixing
+// SetHead 设置当前链上最重的块
 func (cs *ChainStore) SetHead(ts *types.TipSet) error {
 	cs.heaviestLk.Lock()
 	defer cs.heaviestLk.Unlock()
@@ -658,6 +664,7 @@ func (cs *ChainStore) SetHead(ts *types.TipSet) error {
 }
 
 // Contains returns whether our BlockStore has all blocks in the supplied TipSet.
+// Contains 判断链中是否包含该 tipset
 func (cs *ChainStore) Contains(ts *types.TipSet) (bool, error) {
 	for _, c := range ts.Cids() {
 		has, err := cs.chainBlockstore.Has(c)
@@ -684,6 +691,7 @@ func (cs *ChainStore) GetBlock(c cid.Cid) (*types.BlockHeader, error) {
 	return blk, err
 }
 
+// LoadTipSet 从数据库中加载一个tipset
 func (cs *ChainStore) LoadTipSet(tsk types.TipSetKey) (*types.TipSet, error) {
 	v, ok := cs.tsCache.Get(tsk)
 	if ok {
@@ -753,6 +761,7 @@ func (cs *ChainStore) ReorgOps(a, b *types.TipSet) ([]*types.TipSet, []*types.Ti
 	return ReorgOps(cs.LoadTipSet, a, b)
 }
 
+// ReorgOps 回到a，b两条链的的公共祖先， 需要回退的高度。
 func ReorgOps(lts func(types.TipSetKey) (*types.TipSet, error), a, b *types.TipSet) ([]*types.TipSet, []*types.TipSet, error) {
 	left := a
 	right := b
