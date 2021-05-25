@@ -110,7 +110,9 @@ type HeadChangeEvt struct {
 //   1. a tipset cache
 //   2. a block => messages references cache.
 type ChainStore struct {
+	//存储消息
 	chainBlockstore bstore.Blockstore
+	//存储actor相关的信息
 	stateBlockstore bstore.Blockstore
 	metadataDs      dstore.Batching
 
@@ -123,7 +125,8 @@ type ChainStore struct {
 	bestTips *pubsub.PubSub
 	pubLk    sync.Mutex
 
-	tstLk   sync.Mutex
+	tstLk sync.Mutex
+	//保存某个高度的tipset中的所有BlockHeader
 	tipsets map[abi.ChainEpoch][]cid.Cid
 
 	cindex *ChainIndex
@@ -912,11 +915,13 @@ func (cs *ChainStore) GetHeaviestTipSet() (ts *types.TipSet) {
 	return
 }
 
+// AddToTipSetTracker 添加 BlockHeader 到对应的tipset 中
 func (cs *ChainStore) AddToTipSetTracker(b *types.BlockHeader) error {
 	cs.tstLk.Lock()
 	defer cs.tstLk.Unlock()
 
 	tss := cs.tipsets[b.Height]
+	//剔除在同一个高度具有相同 MIner 编号的 BlockHeader
 	for _, oc := range tss {
 		if oc == b.Cid() {
 			log.Debug("tried to add block to tipset tracker that was already there")
@@ -951,7 +956,7 @@ func (cs *ChainStore) AddToTipSetTracker(b *types.BlockHeader) error {
 	return nil
 }
 
-// PersistBlockHeaders 将 blockHeader 持久化到 `chainLocalBlockstore` 数据库中
+// PersistBlockHeaders 将 blockHeader 永久的存储到 `chainLocalBlockstore` 数据库中
 func (cs *ChainStore) PersistBlockHeaders(b ...*types.BlockHeader) error {
 	sbs := make([]block.Block, len(b))
 
@@ -997,6 +1002,7 @@ func PutMessage(bs bstore.Blockstore, m storable) (cid.Cid, error) {
 	return b.Cid(), nil
 }
 
+// PutMessage 存储消息
 func (cs *ChainStore) PutMessage(m storable) (cid.Cid, error) {
 	return PutMessage(cs.chainBlockstore, m)
 }
@@ -1042,6 +1048,7 @@ func (cs *ChainStore) expandTipset(b *types.BlockHeader) (*types.TipSet, error) 
 	return types.NewTipSet(all)
 }
 
+// AddBlock 存储 BlockHeader 到数据库中
 func (cs *ChainStore) AddBlock(ctx context.Context, b *types.BlockHeader) error {
 	if err := cs.PersistBlockHeaders(b); err != nil {
 		return err
@@ -1059,6 +1066,7 @@ func (cs *ChainStore) AddBlock(ctx context.Context, b *types.BlockHeader) error 
 	return nil
 }
 
+// GetGenesis 从数据库中加载创世块
 func (cs *ChainStore) GetGenesis() (*types.BlockHeader, error) {
 	data, err := cs.metadataDs.Get(dstore.NewKey("0"))
 	if err != nil {
@@ -1085,6 +1093,7 @@ func (cs *ChainStore) GetCMessage(c cid.Cid) (types.ChainMsg, error) {
 	return cs.GetSignedMessage(c)
 }
 
+// GetMessage 从数据库中获取 message
 func (cs *ChainStore) GetMessage(c cid.Cid) (*types.Message, error) {
 	var msg *types.Message
 	err := cs.chainLocalBlockstore.View(c, func(b []byte) (err error) {
@@ -1094,6 +1103,7 @@ func (cs *ChainStore) GetMessage(c cid.Cid) (*types.Message, error) {
 	return msg, err
 }
 
+// GetSignedMessage 根据 CID 从从数据库中获取 SingnedMessage
 func (cs *ChainStore) GetSignedMessage(c cid.Cid) (*types.SignedMessage, error) {
 	var msg *types.SignedMessage
 	err := cs.chainLocalBlockstore.View(c, func(b []byte) (err error) {
@@ -1103,6 +1113,7 @@ func (cs *ChainStore) GetSignedMessage(c cid.Cid) (*types.SignedMessage, error) 
 	return msg, err
 }
 
+// readAMTCids 获取 amt 树中的所有的cid
 func (cs *ChainStore) readAMTCids(root cid.Cid) ([]cid.Cid, error) {
 	ctx := context.TODO()
 	// block headers use adt0, for now.
@@ -1358,6 +1369,7 @@ func (cs *ChainStore) ChainBlockstore() bstore.Blockstore {
 func (cs *ChainStore) StateBlockstore() bstore.Blockstore {
 	return cs.stateBlockstore
 }
+
 
 func ActorStore(ctx context.Context, bs bstore.Blockstore) adt.Store {
 	return adt.WrapStore(ctx, cbor.NewCborStore(bs))

@@ -29,6 +29,7 @@ const NewestNetworkVersion = network.Version11
 const ActorUpgradeNetworkVersion = network.Version4
 
 // Epochs
+// 最长的分叉长度（即距离最近公共的祖先的高度）900
 const ForkLengthThreshold = Finality
 
 // Blocks (e)

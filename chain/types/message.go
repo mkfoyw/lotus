@@ -19,6 +19,7 @@ import (
 
 const MessageVersion = 0
 
+// ChainMsg 包含 Message 和 SignedMessage
 type ChainMsg interface {
 	Cid() cid.Cid
 	VMMessage() *Message
