@@ -303,17 +303,10 @@ clean-services: clean-all-services
 
 buildall: $(BINS)
 
-completions:
-	./scripts/make-completions.sh lotus
-	./scripts/make-completions.sh lotus-miner
-.PHONY: completions
-
 install-completions:
 	mkdir -p /usr/share/bash-completion/completions /usr/local/share/zsh/site-functions/
 	install -C ./scripts/bash-completion/lotus /usr/share/bash-completion/completions/lotus
-	install -C ./scripts/bash-completion/lotus-miner /usr/share/bash-completion/completions/lotus-miner
 	install -C ./scripts/zsh-completion/lotus /usr/local/share/zsh/site-functions/_lotus
-	install -C ./scripts/zsh-completion/lotus-miner /usr/local/share/zsh/site-functions/_lotus-miner
 
 clean:
 	rm -rf $(CLEAN) $(BINS)
@@ -333,6 +326,10 @@ type-gen: api-gen
 method-gen: api-gen
 	(cd ./lotuspond/front/src/chain && go run ./methodgen.go)
 
+actors-gen:
+	go run ./chain/actors/agen
+	go fmt ./...
+
 api-gen:
 	go run ./gen/api
 	goimports -w api
@@ -341,9 +338,9 @@ api-gen:
 
 docsgen: docsgen-md docsgen-openrpc
 
-docsgen-md-bin: api-gen
+docsgen-md-bin: api-gen actors-gen
 	go build $(GOFLAGS) -o docgen-md ./api/docgen/cmd
-docsgen-openrpc-bin: api-gen
+docsgen-openrpc-bin: api-gen actors-gen
 	go build $(GOFLAGS) -o docgen-openrpc ./api/docgen-openrpc/cmd
 
 docsgen-md: docsgen-md-full docsgen-md-storage docsgen-md-worker
@@ -367,9 +364,13 @@ docsgen-openrpc-worker: docsgen-openrpc-bin
 
 .PHONY: docsgen docsgen-md-bin docsgen-openrpc-bin
 
-gen: type-gen method-gen docsgen api-gen
+gen: actors-gen type-gen method-gen docsgen api-gen
 	@echo ">>> IF YOU'VE MODIFIED THE CLI, REMEMBER TO ALSO MAKE docsgen-cli"
 .PHONY: gen
+
+snap: lotus lotus-miner lotus-worker
+	snapcraft
+	# snapcraft upload ./lotus_*.snap
 
 # separate from gen because it needs binaries
 docsgen-cli: lotus lotus-miner lotus-worker
