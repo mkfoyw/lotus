@@ -127,6 +127,8 @@ func (blk *BlockHeader) IsValidated() bool {
 	return blk.validated
 }
 
+// 在一个块中消息分为签名的消息（secpk）， 非签名的消息（bls）
+// 分别用一颗 AMT 树来存储这些消息
 type MsgMeta struct {
 	BlsMessages   cid.Cid
 	SecpkMessages cid.Cid

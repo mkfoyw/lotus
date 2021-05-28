@@ -6,6 +6,7 @@ import (
 )
 
 // FullTipSet is an expanded version of the TipSet that contains all the blocks and messages
+// FullTipSet 是 TipSet 的拓展版本包含所有的 block 和 message
 type FullTipSet struct {
 	Blocks []*types.FullBlock
 	tipset *types.TipSet

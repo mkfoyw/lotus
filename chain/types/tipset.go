@@ -204,6 +204,7 @@ func (ts *TipSet) MinTimestamp() uint64 {
 	return minTs
 }
 
+// 获取当前区块中最小的一个 Ticket
 func (ts *TipSet) MinTicketBlock() *BlockHeader {
 	blks := ts.Blocks()
 

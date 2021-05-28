@@ -116,6 +116,7 @@ type ChainStore struct {
 	stateBlockstore bstore.Blockstore
 	metadataDs      dstore.Batching
 
+	//存储区块链中的消息
 	chainLocalBlockstore bstore.Blockstore
 
 	heaviestLk sync.RWMutex
@@ -1104,6 +1105,7 @@ func (cs *ChainStore) GetCMessage(c cid.Cid) (types.ChainMsg, error) {
 // GetMessage 从数据库中获取 message
 func (cs *ChainStore) GetMessage(c cid.Cid) (*types.Message, error) {
 	var msg *types.Message
+	// 以零拷贝的方式访问字节序列
 	err := cs.chainLocalBlockstore.View(c, func(b []byte) (err error) {
 		msg, err = types.DecodeMessage(b)
 		return err
@@ -1159,6 +1161,7 @@ type BlockMessages struct {
 func (cs *ChainStore) BlockMsgsForTipset(ts *types.TipSet) ([]BlockMessages, error) {
 	applied := make(map[address.Address]uint64)
 
+	// 检查同一个发送者发送的消息的Nonce 值
 	selectMsg := func(m *types.Message) (bool, error) {
 		// The first match for a sender is guaranteed to have correct nonce -- the block isn't valid otherwise
 		if _, ok := applied[m.From]; !ok {
@@ -1242,6 +1245,7 @@ type mmCids struct {
 	secpk []cid.Cid
 }
 
+// ReadMsgMetaCids 获取块中的所有的bls 和secp 消息的cid
 func (cs *ChainStore) ReadMsgMetaCids(mmc cid.Cid) ([]cid.Cid, []cid.Cid, error) {
 	o, ok := cs.mmCache.Get(mmc)
 	if ok {
@@ -1255,11 +1259,13 @@ func (cs *ChainStore) ReadMsgMetaCids(mmc cid.Cid) ([]cid.Cid, []cid.Cid, error)
 		return nil, nil, xerrors.Errorf("failed to load msgmeta (%s): %w", mmc, err)
 	}
 
+	//读取所有bls消息的cid
 	blscids, err := cs.readAMTCids(msgmeta.BlsMessages)
 	if err != nil {
 		return nil, nil, xerrors.Errorf("loading bls message cids for block: %w", err)
 	}
 
+	//读取所有secp消息的cid
 	secpkcids, err := cs.readAMTCids(msgmeta.SecpkMessages)
 	if err != nil {
 		return nil, nil, xerrors.Errorf("loading secpk message cids for block: %w", err)
@@ -1300,6 +1306,7 @@ func (cs *ChainStore) GetPath(ctx context.Context, from types.TipSetKey, to type
 	return path, nil
 }
 
+// MessagesForBlock 获取一个 BlockHeader 中的消息
 func (cs *ChainStore) MessagesForBlock(b *types.BlockHeader) ([]*types.Message, []*types.SignedMessage, error) {
 	blscids, secpkcids, err := cs.ReadMsgMetaCids(b.Messages)
 	if err != nil {
@@ -1337,6 +1344,7 @@ func (cs *ChainStore) GetParentReceipt(b *types.BlockHeader, i int) (*types.Mess
 	return &r, nil
 }
 
+// LoadMessagesFromCids 根据cid 从数据库中加载一组消息
 func (cs *ChainStore) LoadMessagesFromCids(cids []cid.Cid) ([]*types.Message, error) {
 	msgs := make([]*types.Message, 0, len(cids))
 	for i, c := range cids {
@@ -1351,6 +1359,7 @@ func (cs *ChainStore) LoadMessagesFromCids(cids []cid.Cid) ([]*types.Message, er
 	return msgs, nil
 }
 
+// LoadSignedMessagesFromCids 根据cid 从数据中加载一组签名消息
 func (cs *ChainStore) LoadSignedMessagesFromCids(cids []cid.Cid) ([]*types.SignedMessage, error) {
 	msgs := make([]*types.SignedMessage, 0, len(cids))
 	for i, c := range cids {
@@ -1368,6 +1377,7 @@ func (cs *ChainStore) LoadSignedMessagesFromCids(cids []cid.Cid) ([]*types.Signe
 // ChainBlockstore returns the chain blockstore. Currently the chain and state
 // // stores are both backed by the same physical store, albeit with different
 // // caching policies, but in the future they will segregate.
+// ChainBlockstore 返回链存储
 func (cs *ChainStore) ChainBlockstore() bstore.Blockstore {
 	return cs.chainBlockstore
 }
@@ -1381,7 +1391,6 @@ func (cs *ChainStore) StateBlockstore() bstore.Blockstore {
 	return cs.stateBlockstore
 }
 
-
 func ActorStore(ctx context.Context, bs bstore.Blockstore) adt.Store {
 	return adt.WrapStore(ctx, cbor.NewCborStore(bs))
 }
@@ -1394,6 +1403,7 @@ func (cs *ChainStore) VMSys() vm.SyscallBuilder {
 	return cs.vmcalls
 }
 
+// TryFillTipSet 返回一个 FulTipSet， 其是tipset 的拓展版本， 包含所有的Block 和 Message
 func (cs *ChainStore) TryFillTipSet(ts *types.TipSet) (*FullTipSet, error) {
 	var out []*types.FullBlock
 
@@ -1416,6 +1426,7 @@ func (cs *ChainStore) TryFillTipSet(ts *types.TipSet) (*FullTipSet, error) {
 	return NewFullTipSet(out), nil
 }
 
+// DrawRandomness 生成某个域中的随机数
 func DrawRandomness(rbase []byte, pers crypto.DomainSeparationTag, round abi.ChainEpoch, entropy []byte) ([]byte, error) {
 	h := blake2b.New256()
 	if err := binary.Write(h, binary.BigEndian, int64(pers)); err != nil {
@@ -1437,11 +1448,13 @@ func DrawRandomness(rbase []byte, pers crypto.DomainSeparationTag, round abi.Cha
 	return h.Sum(nil), nil
 }
 
+// GetBeaconRandomness 从 beacon 获取某个域的随机数
 func (cs *ChainStore) GetBeaconRandomness(ctx context.Context, blks []cid.Cid, pers crypto.DomainSeparationTag, round abi.ChainEpoch, entropy []byte) ([]byte, error) {
 	_, span := trace.StartSpan(ctx, "store.GetBeaconRandomness")
 	defer span.End()
 	span.AddAttributes(trace.Int64Attribute("round", int64(round)))
 
+	//加载tipset
 	ts, err := cs.LoadTipSet(types.NewTipSetKey(blks...))
 	if err != nil {
 		return nil, err
@@ -1471,6 +1484,7 @@ func (cs *ChainStore) GetBeaconRandomness(ctx context.Context, blks []cid.Cid, p
 	return DrawRandomness(be.Data, pers, round, entropy)
 }
 
+// GetChainRandomness 从链上获取随机数
 func (cs *ChainStore) GetChainRandomness(ctx context.Context, blks []cid.Cid, pers crypto.DomainSeparationTag, round abi.ChainEpoch, entropy []byte) ([]byte, error) {
 	_, span := trace.StartSpan(ctx, "store.GetChainRandomness")
 	defer span.End()
@@ -1506,11 +1520,13 @@ func (cs *ChainStore) GetChainRandomness(ctx context.Context, blks []cid.Cid, pe
 // height. In the case that the given height is a null round, the 'prev' flag
 // selects the tipset before the null round if true, and the tipset following
 // the null round if false.
+// GetTipsetByHeight 从某个 ts 寻找落后 ts 的某个高度的tipset
 func (cs *ChainStore) GetTipsetByHeight(ctx context.Context, h abi.ChainEpoch, ts *types.TipSet, prev bool) (*types.TipSet, error) {
 	if ts == nil {
 		ts = cs.GetHeaviestTipSet()
 	}
 
+	// 不能获取未来的tipset
 	if h > ts.Height() {
 		return nil, xerrors.Errorf("looking for tipset with height greater than start point")
 	}
@@ -1725,6 +1741,7 @@ func (cs *ChainStore) Import(r io.Reader) (*types.TipSet, error) {
 	return root, nil
 }
 
+// GetLatestBeaconEntry 从某个高度开始获取最近的 BeaconEntry
 func (cs *ChainStore) GetLatestBeaconEntry(ts *types.TipSet) (*types.BeaconEntry, error) {
 	cur := ts
 	for i := 0; i < 20; i++ {
