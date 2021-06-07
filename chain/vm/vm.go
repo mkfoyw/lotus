@@ -201,6 +201,7 @@ type (
 	LookbackStateGetter  func(context.Context, abi.ChainEpoch) (*state.StateTree, error)
 )
 
+// 用于执行tipset 的环境
 type VM struct {
 	cstate *state.StateTree
 	// TODO: Is base actually used? Can we delete it?

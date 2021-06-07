@@ -94,6 +94,7 @@ type PreMigration struct {
 	StopWithin abi.ChainEpoch
 }
 
+// 网络升级相关
 type Upgrade struct {
 	Height    abi.ChainEpoch
 	Network   network.Version

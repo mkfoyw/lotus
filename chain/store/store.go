@@ -1158,6 +1158,7 @@ type BlockMessages struct {
 	WinCount      int64
 }
 
+// BlockMsgsForTipset 获取在一个 Tipset 中没有块的消息
 func (cs *ChainStore) BlockMsgsForTipset(ts *types.TipSet) ([]BlockMessages, error) {
 	applied := make(map[address.Address]uint64)
 

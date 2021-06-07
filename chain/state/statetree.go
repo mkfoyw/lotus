@@ -29,6 +29,7 @@ import (
 var log = logging.Logger("statetree")
 
 // StateTree stores actors state by their ID.
+// StateTree 用来存储 actor 的状态。 这是状态树在内存中表示。
 type StateTree struct {
 	root        adt.Map
 	version     types.StateTreeVersion
@@ -45,7 +46,9 @@ type stateSnaps struct {
 }
 
 type stateSnapLayer struct {
-	actors       map[address.Address]streeOp
+	//缓存地址对应的actor
+	actors map[address.Address]streeOp
+	//缓存各种类型的地址到id 地址映射
 	resolveCache map[address.Address]address.Address
 }
 
@@ -213,9 +216,12 @@ func NewStateTree(cst cbor.IpldStore, ver types.StateTreeVersion) (*StateTree, e
 	return s, nil
 }
 
+// LoadStateTree 加载状态树。
 func LoadStateTree(cst cbor.IpldStore, c cid.Cid) (*StateTree, error) {
+	// 定义状态树的树根
 	var root types.StateRoot
 	// Try loading as a new-style state-tree (version/actors tuple).
+	// 尝试加载新的状态树， 如果加载失败， 则加载老版本的状态树。
 	if err := cst.Get(context.TODO(), c, &root); err != nil {
 		// We failed to decode as the new version, must be an old version.
 		root.Actors = c
@@ -228,6 +234,7 @@ func LoadStateTree(cst cbor.IpldStore, c cid.Cid) (*StateTree, error) {
 		hamt adt.Map
 		err  error
 	)
+	// 根据状态树的版本加载状态树
 	switch root.Version {
 	case types.StateTreeVersion0:
 		var tree *states0.Tree
@@ -284,7 +291,9 @@ func (st *StateTree) SetActor(addr address.Address, act *types.Actor) error {
 	return nil
 }
 
+// lookupIDinternal 将其它类型的actor 地址转换为 ID 地址
 func (st *StateTree) lookupIDinternal(addr address.Address) (address.Address, error) {
+	// 根据 init actor 的 ID 地址， 加载 InitActor
 	act, err := st.GetActor(init_.Address)
 	if err != nil {
 		return address.Undef, xerrors.Errorf("getting init actor: %w", err)
@@ -306,6 +315,7 @@ func (st *StateTree) lookupIDinternal(addr address.Address) (address.Address, er
 }
 
 // LookupID gets the ID address of this actor's `addr` stored in the `InitActor`.
+// LookupId 从 InitActor 中获取 Actor 的ID 地址
 func (st *StateTree) LookupID(addr address.Address) (address.Address, error) {
 	if addr.Protocol() == address.ID {
 		return addr, nil
@@ -326,12 +336,14 @@ func (st *StateTree) LookupID(addr address.Address) (address.Address, error) {
 }
 
 // GetActor returns the actor from any type of `addr` provided.
+// GetActor 能够从各种类型的A地址获取actor
 func (st *StateTree) GetActor(addr address.Address) (*types.Actor, error) {
 	if addr == address.Undef {
 		return nil, fmt.Errorf("GetActor called on undefined address")
 	}
 
 	// Transform `addr` to its ID format.
+	//获取id 地址
 	iaddr, err := st.LookupID(addr)
 	if err != nil {
 		if xerrors.Is(err, types.ErrActorNotFound) {
@@ -351,6 +363,7 @@ func (st *StateTree) GetActor(addr address.Address) (*types.Actor, error) {
 	}
 
 	var act types.Actor
+	// 根据 id 地址  到状态树中获取 Actor
 	if found, err := st.root.Get(abi.AddrKey(addr), &act); err != nil {
 		return nil, xerrors.Errorf("hamt find failed: %w", err)
 	} else if !found {

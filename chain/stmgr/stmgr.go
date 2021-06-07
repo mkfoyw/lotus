@@ -87,6 +87,7 @@ type StateManager struct {
 	// A set of potentially expensive/time consuming upgrades. Explicit
 	// calls for, e.g., gas estimation fail against this epoch with
 	// ErrExpensiveFork.
+	//正在进行复杂的网络升级操作
 	expensiveUpgrades map[abi.ChainEpoch]struct{}
 
 	stCache             map[string][]cid.Cid
@@ -193,6 +194,7 @@ func (sm *StateManager) Stop(ctx context.Context) error {
 	return nil
 }
 
+//
 func (sm *StateManager) TipSetState(ctx context.Context, ts *types.TipSet) (st cid.Cid, rec cid.Cid, err error) {
 	ctx, span := trace.StartSpan(ctx, "tipSetState")
 	defer span.End()
@@ -282,6 +284,16 @@ func (sm *StateManager) ExecutionTrace(ctx context.Context, ts *types.TipSet) (c
 
 type ExecCallback func(cid.Cid, *types.Message, *vm.ApplyRet) error
 
+// ApplyBlocks 执行一个tipset 中的所有block 的， 并返回执行该tipset中所有的消息状态树树根和消息的收据树。
+// 参数说明：
+// 		parentEpoch: 父tipet 的高度
+//		pstate: 父 tipset 状态树的树根
+//		bms： 当前tipset 的所有消息
+//		epoech： 当前tipset 的高度
+//		r: ChainRand 用于从连上获取随机数
+// 	    cb： 回调函数
+//		basefree：父tipset的基本消息费用
+// 		ts： 当前tipset
 func (sm *StateManager) ApplyBlocks(ctx context.Context, parentEpoch abi.ChainEpoch, pstate cid.Cid, bms []store.BlockMessages, epoch abi.ChainEpoch, r vm.Rand, cb ExecCallback, baseFee abi.TokenAmount, ts *types.TipSet) (cid.Cid, cid.Cid, error) {
 	done := metrics.Timer(ctx, metrics.VMApplyBlocksTotal)
 	defer done()
@@ -307,11 +319,13 @@ func (sm *StateManager) ApplyBlocks(ctx context.Context, parentEpoch abi.ChainEp
 		return sm.newVM(ctx, vmopt)
 	}
 
+	//创建虚拟机
 	vmi, err := makeVmWithBaseState(pstate)
 	if err != nil {
 		return cid.Undef, cid.Undef, xerrors.Errorf("making vm: %w", err)
 	}
 
+	//运行定时任务
 	runCron := func(epoch abi.ChainEpoch) error {
 		cronMsg := &types.Message{
 			To:         cron.Address,
@@ -376,10 +390,13 @@ func (sm *StateManager) ApplyBlocks(ctx context.Context, parentEpoch abi.ChainEp
 
 	var receipts []cbg.CBORMarshaler
 	processedMsgs := make(map[cid.Cid]struct{})
+
+	// 执行tipset的每一个块
 	for _, b := range bms {
 		penalty := types.NewInt(0)
 		gasReward := big.Zero()
 
+		// 执行块中的每一条消息
 		for _, cm := range append(b.BlsMessages, b.SecpkMessages...) {
 			m := cm.VMMessage()
 			if _, found := processedMsgs[m.Cid()]; found {
@@ -402,16 +419,19 @@ func (sm *StateManager) ApplyBlocks(ctx context.Context, parentEpoch abi.ChainEp
 			processedMsgs[m.Cid()] = struct{}{}
 		}
 
+		// 生成创建该块的矿工奖励参数
 		params, err := actors.SerializeParams(&reward.AwardBlockRewardParams{
 			Miner:     b.Miner,
 			Penalty:   penalty,
 			GasReward: gasReward,
 			WinCount:  b.WinCount,
 		})
+
 		if err != nil {
 			return cid.Undef, cid.Undef, xerrors.Errorf("failed to serialize award params: %w", err)
 		}
 
+		// 创建奖励矿工的 Reward 消息
 		rwMsg := &types.Message{
 			From:       builtin.SystemActorAddr,
 			To:         reward.Address,
@@ -423,6 +443,8 @@ func (sm *StateManager) ApplyBlocks(ctx context.Context, parentEpoch abi.ChainEp
 			Method:     reward.Methods.AwardBlockReward,
 			Params:     params,
 		}
+
+		// 执行 Reward 参数
 		ret, actErr := vmi.ApplyImplicitMessage(ctx, rwMsg)
 		if actErr != nil {
 			return cid.Undef, cid.Undef, xerrors.Errorf("failed to apply reward message for miner %s: %w", b.Miner, actErr)
@@ -441,6 +463,7 @@ func (sm *StateManager) ApplyBlocks(ctx context.Context, parentEpoch abi.ChainEp
 	partDone()
 	partDone = metrics.Timer(ctx, metrics.VMApplyCron)
 
+	// 执行当前 epoch 的 定时任务
 	if err := runCron(epoch); err != nil {
 		return cid.Cid{}, cid.Cid{}, err
 	}
@@ -448,12 +471,15 @@ func (sm *StateManager) ApplyBlocks(ctx context.Context, parentEpoch abi.ChainEp
 	partDone()
 	partDone = metrics.Timer(ctx, metrics.VMApplyFlush)
 
+	//创建一颗树， 并存储所有的消息执行结果
 	rectarr := blockadt.MakeEmptyArray(sm.cs.ActorStore(ctx))
 	for i, receipt := range receipts {
 		if err := rectarr.Set(uint64(i), receipt); err != nil {
 			return cid.Undef, cid.Undef, xerrors.Errorf("failed to build receipts amt: %w", err)
 		}
 	}
+
+	//收据树的树根
 	rectroot, err := rectarr.Root()
 	if err != nil {
 		return cid.Undef, cid.Undef, xerrors.Errorf("failed to build receipts amt: %w", err)
@@ -470,12 +496,14 @@ func (sm *StateManager) ApplyBlocks(ctx context.Context, parentEpoch abi.ChainEp
 	return st, rectroot, nil
 }
 
+// computeTipSetState 获取执行完该tipset 所有的消息后， 该tipset 的状态树的树根 和 该tipset所有的消息执行完结果的收据树
 func (sm *StateManager) computeTipSetState(ctx context.Context, ts *types.TipSet, cb ExecCallback) (cid.Cid, cid.Cid, error) {
 	ctx, span := trace.StartSpan(ctx, "computeTipSetState")
 	defer span.End()
 
 	blks := ts.Blocks()
 
+	// 在同一高度每个矿工只能产生一个块
 	for i := 0; i < len(blks); i++ {
 		for j := i + 1; j < len(blks); j++ {
 			if blks[i].Miner == blks[j].Miner {
@@ -486,7 +514,9 @@ func (sm *StateManager) computeTipSetState(ctx context.Context, ts *types.TipSet
 		}
 	}
 
+	// 获取 父tipset 的高度
 	var parentEpoch abi.ChainEpoch
+	// 获取父tipset 状态树的树根
 	pstate := blks[0].ParentStateRoot
 	if blks[0].Height > 0 {
 		parent, err := sm.cs.GetBlock(blks[0].Parents[0])
@@ -499,11 +529,13 @@ func (sm *StateManager) computeTipSetState(ctx context.Context, ts *types.TipSet
 
 	r := store.NewChainRand(sm.cs, ts.Cids())
 
+	// 获取该 tipset 所有的Block 中的所有消息
 	blkmsgs, err := sm.cs.BlockMsgsForTipset(ts)
 	if err != nil {
 		return cid.Undef, cid.Undef, xerrors.Errorf("getting block messages for tipset: %w", err)
 	}
 
+	// 获取父tipet 的 ParentBaseFree
 	baseFee := blks[0].ParentBaseFee
 
 	return sm.ApplyBlocks(ctx, parentEpoch, pstate, blkmsgs, blks[0].Height, r, cb, baseFee, ts)
