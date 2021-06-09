@@ -16,6 +16,7 @@ import (
 	statemachine "github.com/filecoin-project/go-statemachine"
 )
 
+// Plan 用于处理进入状态机内部的一组事件
 func (m *Sealing) Plan(events []statemachine.Event, user interface{}) (interface{}, uint64, error) {
 	next, processed, err := m.plan(events, user.(*SectorInfo))
 	if err != nil || next == nil {
@@ -33,6 +34,7 @@ func (m *Sealing) Plan(events []statemachine.Event, user interface{}) (interface
 	}, processed, nil // TODO: This processed event count is not very correct
 }
 
+// fsmPlanners 表示在在不同阶段的状态的应该调用Plan函数
 var fsmPlanners = map[SectorState]func(events []statemachine.Event, state *SectorInfo) (uint64, error){
 	// Sealing
 
@@ -259,6 +261,7 @@ func (m *Sealing) logEvents(events []statemachine.Event, state *SectorInfo) {
 	}
 }
 
+// plan 状态机的 Handler 函数（Plan）函数的具体实现
 func (m *Sealing) plan(events []statemachine.Event, state *SectorInfo) (func(statemachine.Context, SectorInfo) error, uint64, error) {
 	/////
 	// First process all events
@@ -271,6 +274,7 @@ func (m *Sealing) plan(events []statemachine.Event, state *SectorInfo) (func(sta
 		}(*state) // take safe-ish copy of the before state (except for nested pointers)
 	}
 
+	// 找到该阶段所对应的事件处理函数
 	p := fsmPlanners[state.State]
 	if p == nil {
 		if len(events) == 1 {
@@ -571,6 +575,7 @@ func onReturning(mut mutator) func() (mutator, func(*SectorInfo) (bool, error)) 
 	}
 }
 
+// planOne 默认的状态机某个阶段的事件处理函数。  在如果没有设置 状态机的某个装阶段的事件处理处理函数， 将会调用这个函数。
 func planOne(ts ...func() (mut mutator, next func(*SectorInfo) (more bool, err error))) func(events []statemachine.Event, state *SectorInfo) (uint64, error) {
 	return func(events []statemachine.Event, state *SectorInfo) (uint64, error) {
 	eloop:

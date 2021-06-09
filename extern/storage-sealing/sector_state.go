@@ -1,7 +1,9 @@
 package sealing
 
+// 扇区状态
 type SectorState string
 
+// 扇区存在的状态列表
 var ExistSectorStateList = map[SectorState]struct{}{
 	Empty:                 {},
 	WaitDeals:             {},

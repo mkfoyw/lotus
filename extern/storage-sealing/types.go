@@ -65,13 +65,16 @@ const (
 	RetCommitFailed    = ReturnState(CommitFailed)
 )
 
+// SectorInfo  状态机保存的内部状态信息
 type SectorInfo struct {
+	//状态机所处的阶段
 	State        SectorState
 	SectorNumber abi.SectorNumber
 
 	SectorType abi.RegisteredSealProof
 
 	// Packing
+	// 添加一个 Piece 到扇区的时间
 	CreationTime int64 // unix seconds
 	Pieces       []Piece
 

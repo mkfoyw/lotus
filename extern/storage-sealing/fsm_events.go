@@ -57,6 +57,7 @@ func (evt SectorForceState) applyGlobal(state *SectorInfo) bool {
 
 // Normal path
 
+// 创建一个空的扇区事件
 type SectorStart struct {
 	ID         abi.SectorNumber
 	SectorType abi.RegisteredSealProof
@@ -67,6 +68,7 @@ func (evt SectorStart) apply(state *SectorInfo) {
 	state.SectorType = evt.SectorType
 }
 
+// 创建一个垃圾扇区事件
 type SectorStartCC struct {
 	ID         abi.SectorNumber
 	SectorType abi.RegisteredSealProof
@@ -79,12 +81,14 @@ func (evt SectorStartCC) apply(state *SectorInfo) {
 
 type SectorAddPiece struct{}
 
+// 开始添加一个 Piece 到一个扇区事件
 func (evt SectorAddPiece) apply(state *SectorInfo) {
 	if state.CreationTime == 0 {
 		state.CreationTime = time.Now().Unix()
 	}
 }
 
+// 完成添加一个Piece 到扇区事件
 type SectorPieceAdded struct {
 	NewPieces []Piece
 }
@@ -93,17 +97,20 @@ func (evt SectorPieceAdded) apply(state *SectorInfo) {
 	state.Pieces = append(state.Pieces, evt.NewPieces...)
 }
 
+// 添加一个 piece 到扇区失败事件
 type SectorAddPieceFailed struct{ error }
 
 func (evt SectorAddPieceFailed) FormatError(xerrors.Printer) (next error) { return evt.error }
 func (evt SectorAddPieceFailed) apply(si *SectorInfo)                     {}
 
+// 开始填充扇区的剩余空间事件
 type SectorStartPacking struct{}
 
 func (evt SectorStartPacking) apply(*SectorInfo) {}
 
 func (evt SectorStartPacking) Ignore() {}
 
+// 完成填充扇区的剩余空间事件
 type SectorPacked struct{ FillerPieces []abi.PieceInfo }
 
 func (evt SectorPacked) apply(state *SectorInfo) {
@@ -115,6 +122,7 @@ func (evt SectorPacked) apply(state *SectorInfo) {
 	}
 }
 
+// 已经获取扇区Ticket 事件
 type SectorTicket struct {
 	TicketValue abi.SealRandomness
 	TicketEpoch abi.ChainEpoch
@@ -125,10 +133,12 @@ func (evt SectorTicket) apply(state *SectorInfo) {
 	state.TicketValue = evt.TicketValue
 }
 
+// Tikect 以及过期事件
 type SectorOldTicket struct{}
 
 func (evt SectorOldTicket) apply(*SectorInfo) {}
 
+// 扇区P1 完成事件
 type SectorPreCommit1 struct {
 	PreCommit1Out storage.PreCommit1Out
 }
@@ -138,6 +148,7 @@ func (evt SectorPreCommit1) apply(state *SectorInfo) {
 	state.PreCommit2Fails = 0
 }
 
+// 扇区 P2 完成事件
 type SectorPreCommit2 struct {
 	Sealed   cid.Cid
 	Unsealed cid.Cid
@@ -150,6 +161,7 @@ func (evt SectorPreCommit2) apply(state *SectorInfo) {
 	state.CommR = &commr
 }
 
+// 扇区批量提交事件
 type SectorPreCommitBatch struct{}
 
 func (evt SectorPreCommitBatch) apply(*SectorInfo) {}
@@ -162,6 +174,7 @@ func (evt SectorPreCommitBatchSent) apply(state *SectorInfo) {
 	state.PreCommitMessage = &evt.Message
 }
 
+// 扇区 P1 信息已经在连上事件
 type SectorPreCommitLanded struct {
 	TipSet TipSetToken
 }
@@ -170,14 +183,18 @@ func (evt SectorPreCommitLanded) apply(si *SectorInfo) {
 	si.PreCommitTipSet = evt.TipSet
 }
 
+// P1 生成失败事件
 type SectorSealPreCommit1Failed struct{ error }
 
 func (evt SectorSealPreCommit1Failed) FormatError(xerrors.Printer) (next error) { return evt.error }
+
+// P1 生成失败事件， 重置扇区信息
 func (evt SectorSealPreCommit1Failed) apply(si *SectorInfo) {
 	si.InvalidProofs = 0 // reset counter
 	si.PreCommit2Fails = 0
 }
 
+// P2 生成失败事件， 记录P2 已经生成的次数
 type SectorSealPreCommit2Failed struct{ error }
 
 func (evt SectorSealPreCommit2Failed) FormatError(xerrors.Printer) (next error) { return evt.error }
@@ -186,11 +203,13 @@ func (evt SectorSealPreCommit2Failed) apply(si *SectorInfo) {
 	si.PreCommit2Fails++
 }
 
+// PreCommit 上链失败事件
 type SectorChainPreCommitFailed struct{ error }
 
 func (evt SectorChainPreCommitFailed) FormatError(xerrors.Printer) (next error) { return evt.error }
 func (evt SectorChainPreCommitFailed) apply(*SectorInfo)                        {}
 
+// PreCommit 上链成功事件
 type SectorPreCommitted struct {
 	Message          cid.Cid
 	PreCommitDeposit big.Int
@@ -203,6 +222,7 @@ func (evt SectorPreCommitted) apply(state *SectorInfo) {
 	state.PreCommitInfo = &evt.PreCommitInfo
 }
 
+// SectorSeed 已经准备成功
 type SectorSeedReady struct {
 	SeedValue abi.InteractiveSealRandomness
 	SeedEpoch abi.ChainEpoch
@@ -213,6 +233,7 @@ func (evt SectorSeedReady) apply(state *SectorInfo) {
 	state.SeedValue = evt.SeedValue
 }
 
+// 生成扇区Commit信息失败事件
 type SectorComputeProofFailed struct{ error }
 
 func (evt SectorComputeProofFailed) FormatError(xerrors.Printer) (next error) { return evt.error }
@@ -237,6 +258,7 @@ type SectorTicketExpired struct{ error }
 func (evt SectorTicketExpired) FormatError(xerrors.Printer) (next error) { return evt.error }
 func (evt SectorTicketExpired) apply(*SectorInfo)                        {}
 
+// 扇区C2信息生成成功事件
 type SectorCommitted struct {
 	Proof []byte
 }
@@ -245,6 +267,7 @@ func (evt SectorCommitted) apply(state *SectorInfo) {
 	state.Proof = evt.Proof
 }
 
+// 开始批量提交扇区 Commit 信息事件
 type SectorSubmitCommitAggregate struct{}
 
 func (evt SectorSubmitCommitAggregate) apply(*SectorInfo) {}
