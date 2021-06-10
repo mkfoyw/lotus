@@ -18,12 +18,14 @@ import (
 
 // Plan 用于处理进入状态机内部的一组事件
 func (m *Sealing) Plan(events []statemachine.Event, user interface{}) (interface{}, uint64, error) {
+	// 返回状态机的进入动作函数， 以及处理的事件数目， 以及error
 	next, processed, err := m.plan(events, user.(*SectorInfo))
 	if err != nil || next == nil {
 		return nil, processed, err
 	}
 
 	return func(ctx statemachine.Context, si SectorInfo) error {
+		// 执行该扇区的所处阶段的进入动作
 		err := next(ctx, si)
 		if err != nil {
 			log.Errorf("unhandled sector error (%d): %+v", si.SectorNumber, err)
@@ -38,6 +40,7 @@ func (m *Sealing) Plan(events []statemachine.Event, user interface{}) (interface
 var fsmPlanners = map[SectorState]func(events []statemachine.Event, state *SectorInfo) (uint64, error){
 	// Sealing
 
+	// 用来表示该阶段能够处理的事件， 已经能够相应应该转换进入的阶段。
 	UndefinedSectorState: planOne(
 		on(SectorStart{}, WaitDeals),
 		on(SectorStartCC{}, Packing),
@@ -288,6 +291,7 @@ func (m *Sealing) plan(events []statemachine.Event, state *SectorInfo) (func(sta
 		}
 	}
 
+	// 执行该阶段的事件处理函数
 	processed, err := p(events, state)
 	if err != nil {
 		return nil, 0, xerrors.Errorf("running planner for state %s failed: %w", state.State, err)
@@ -343,10 +347,12 @@ func (m *Sealing) plan(events []statemachine.Event, state *SectorInfo) (func(sta
 
 	*/
 
+	// 需要近一步的研究
 	if err := m.onUpdateSector(context.TODO(), state); err != nil {
 		log.Errorw("update sector stats", "error", err)
 	}
 
+	// 执行状态机的入口函数
 	switch state.State {
 	// Happy path
 	case Empty:
@@ -543,6 +549,7 @@ func final(events []statemachine.Event, state *SectorInfo) (uint64, error) {
 	return 0, xerrors.Errorf("didn't expect any events in state %s, got %+v", state.State, events)
 }
 
+// on 返回某个事件的的输入动作和一个能够改变状态的回掉函数。
 func on(mut mutator, next SectorState) func() (mutator, func(*SectorInfo) (bool, error)) {
 	return func() (mutator, func(*SectorInfo) (bool, error)) {
 		return mut, func(state *SectorInfo) (bool, error) {
@@ -553,6 +560,7 @@ func on(mut mutator, next SectorState) func() (mutator, func(*SectorInfo) (bool,
 }
 
 // like `on`, but doesn't change state
+// apply 返回某个事件的输入动作， 但是并不会改变状态机所处的阶段。
 func apply(mut mutator) func() (mutator, func(*SectorInfo) (bool, error)) {
 	return func() (mutator, func(*SectorInfo) (bool, error)) {
 		return mut, func(state *SectorInfo) (bool, error) {
@@ -575,29 +583,43 @@ func onReturning(mut mutator) func() (mutator, func(*SectorInfo) (bool, error)) 
 	}
 }
 
-// planOne 默认的状态机某个阶段的事件处理函数。  在如果没有设置 状态机的某个装阶段的事件处理处理函数， 将会调用这个函数。
+// planOne 通过闭包生成状态机某个阶段的事件处理函数。
+// 输入参数：
+//		一系列函数， 这些函数返回该阶段能够处理的一个事件（输入函数）， 以及一个回掉函数，该函数能够引发状态机的阶段改变。
+// 输出参数：
+// 		该状态机的事件处理函数。
 func planOne(ts ...func() (mut mutator, next func(*SectorInfo) (more bool, err error))) func(events []statemachine.Event, state *SectorInfo) (uint64, error) {
 	return func(events []statemachine.Event, state *SectorInfo) (uint64, error) {
 	eloop:
+		// 遍布状态机中， 等待处理的事件。
 		for i, event := range events {
+			//判断该事件是否能够运用于状态机的所有阶段， 如果能够运用， 则则执行
 			if gm, ok := event.User.(globalMutator); ok {
 				gm.applyGlobal(state)
 				return uint64(i + 1), nil
 			}
 
+			// 遍历该阶段能够处理的事件
 			for _, t := range ts {
 				mut, next := t()
 
+				// 判断事件类型是否一致
 				if reflect.TypeOf(event.User) != reflect.TypeOf(mut) {
 					continue
 				}
 
+				// 如果是错误事件， 则输出错误的原因
 				if err, iserr := event.User.(error); iserr {
 					log.Warnf("sector %d got error event %T: %+v", state.SectorNumber, event.User, err)
 				}
 
+				// 执行该事件的输入动作， 去改变状态机内部状态。
 				event.User.(mutator).apply(state)
+
+				// 改变状态机所处的阶段
 				more, err := next(state)
+
+				//
 				if err != nil || !more {
 					return uint64(i + 1), err
 				}
@@ -605,6 +627,7 @@ func planOne(ts ...func() (mut mutator, next func(*SectorInfo) (more bool, err e
 				continue eloop
 			}
 
+			// 该事件是否能够忽略
 			_, ok := event.User.(Ignorable)
 			if ok {
 				continue
@@ -613,6 +636,7 @@ func planOne(ts ...func() (mut mutator, next func(*SectorInfo) (more bool, err e
 			return uint64(i + 1), xerrors.Errorf("planner for state %s received unexpected event %T (%+v)", state.State, event.User, event)
 		}
 
+		// 已经处理完所有的事件
 		return uint64(len(events)), nil
 	}
 }

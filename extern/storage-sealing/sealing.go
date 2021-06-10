@@ -76,6 +76,7 @@ type SectorStateNotifee func(before, after SectorInfo)
 
 type AddrSel func(ctx context.Context, mi miner.MinerInfo, use api.AddrUse, goodFunds, minFunds abi.TokenAmount) (address.Address, abi.TokenAmount, error)
 
+// Sealing 也可以看作状态机的事件处理器， 因为 其实现了 Plannner 接口
 type Sealing struct {
 	api    SealingAPI
 	feeCfg FeeConfig
@@ -89,6 +90,7 @@ type Sealing struct {
 	verif   ffiwrapper.Verifier
 	pcp     PreCommitPolicy
 
+	// 这好像与交易等待相关
 	inputLk        sync.Mutex
 	openSectors    map[abi.SectorID]*openSector
 	sectorTimers   map[abi.SectorID]*time.Timer

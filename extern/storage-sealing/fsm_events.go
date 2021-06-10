@@ -18,6 +18,7 @@ type mutator interface {
 }
 
 // globalMutator is an event which can apply in every state
+// globalMutator 表示这个事件引发的的输入动作能够运用到状态机的所有阶段
 type globalMutator interface {
 	// applyGlobal applies the event to the state. If if returns true,
 	//  event processing should be interrupted
