@@ -83,8 +83,9 @@ type Sealing struct {
 	events Events
 
 	maddr address.Address
-
-	sealer  sectorstorage.SectorManager
+	// 实现具体的密封操作
+	sealer sectorstorage.SectorManager
+	// 保存所有状态机组
 	sectors *statemachine.StateGroup
 	sc      SectorIDCounter
 	verif   ffiwrapper.Verifier

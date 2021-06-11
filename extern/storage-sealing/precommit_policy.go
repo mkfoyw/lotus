@@ -33,6 +33,9 @@ type Chain interface {
 //
 // If we're in Mode 2: The pre-commit expiration epoch will be set to the
 // current epoch + the provided default duration.
+
+// 基本的 PreCommitPolicy 满足 PreCommitPolicy。 它有两个模式：
+// 模式1:
 type BasicPreCommitPolicy struct {
 	api Chain
 

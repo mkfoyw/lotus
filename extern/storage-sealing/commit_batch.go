@@ -452,7 +452,9 @@ func (b *CommitBatcher) Stop(ctx context.Context) error {
 	}
 }
 
+// 获取提交 PreCommit 信息的截止日期
 func getSectorDeadline(curEpoch abi.ChainEpoch, si SectorInfo) time.Time {
+	// 获取票的最大有效期限(31.5个小时)
 	deadlineEpoch := si.TicketEpoch + policy.MaxPreCommitRandomnessLookback
 	for _, p := range si.Pieces {
 		if p.DealInfo == nil {

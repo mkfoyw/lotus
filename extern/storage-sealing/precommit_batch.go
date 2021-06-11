@@ -33,16 +33,20 @@ type preCommitEntry struct {
 }
 
 type PreCommitBatcher struct {
-	api       PreCommitBatcherApi
+	api PreCommitBatcherApi
+	// 矿工地址
 	maddr     address.Address
 	mctx      context.Context
 	addrSel   AddrSel
 	feeCfg    FeeConfig
 	getConfig GetSealingConfigFunc
 
+	// 每个扇区的最晚提交信息
 	deadlines map[abi.SectorNumber]time.Time
-	todo      map[abi.SectorNumber]*preCommitEntry
-	waiting   map[abi.SectorNumber][]chan sealiface.PreCommitBatchRes
+	// 等待批量提交的 PreCommit 信息
+	todo map[abi.SectorNumber]*preCommitEntry
+	// 该扇区等待上链的消息
+	waiting map[abi.SectorNumber][]chan sealiface.PreCommitBatchRes
 
 	notify, stop, stopped chan struct{}
 	force                 chan chan []sealiface.PreCommitBatchRes
@@ -120,6 +124,7 @@ func (b *PreCommitBatcher) batchWait(maxWait, slack time.Duration) <-chan time.T
 		return nil
 	}
 
+	// 最晚必须要批量提交 PreCommit 消息的时间
 	var deadline time.Time
 	for sn := range b.todo {
 		sectorDeadline := b.deadlines[sn]
@@ -151,10 +156,15 @@ func (b *PreCommitBatcher) batchWait(maxWait, slack time.Duration) <-chan time.T
 	return time.After(wait)
 }
 
+// maybeStartBatch 判断是否开始打包 PreCommit 信息
+// 输入参数：
+//	   nofif: 当前等待的 PreCommit 信息， 小于我们设置的最多能够批量提交的消息是否不要进行打包
+//     after: 当前等待的 PreCommit 数量， 小于我们设置的最少能够批量提交的消息是否不要进行打包
 func (b *PreCommitBatcher) maybeStartBatch(notif, after bool) ([]sealiface.PreCommitBatchRes, error) {
 	b.lk.Lock()
 	defer b.lk.Unlock()
 
+	//获取当前等待打包的 PreCommit 信息
 	total := len(b.todo)
 	if total == 0 {
 		return nil, nil // nothing to do
@@ -165,15 +175,18 @@ func (b *PreCommitBatcher) maybeStartBatch(notif, after bool) ([]sealiface.PreCo
 		return nil, xerrors.Errorf("getting config: %w", err)
 	}
 
+	// 当前等待打包的数量小于我们期望提交的 PreCommit 数量
 	if notif && total < cfg.MaxPreCommitBatch {
 		return nil, nil
 	}
 
+	// 当前等待打包的PreCommit 信息小于我们想要批量提交的PreCommit 最小数量是否不要进行打包。
 	if after && total < cfg.MinPreCommitBatch {
 		return nil, nil
 	}
 
 	// todo support multiple batches
+	// 开始处理批量提交 PreCommit 消息
 	res, err := b.processBatch(cfg)
 	if err != nil && len(res) == 0 {
 		return nil, err
@@ -198,9 +211,13 @@ func (b *PreCommitBatcher) maybeStartBatch(notif, after bool) ([]sealiface.PreCo
 	return res, nil
 }
 
+// processBatch 打包 PreCommit 消息，然后进行批量提交 PreCommit 信息
 func (b *PreCommitBatcher) processBatch(cfg sealiface.Config) ([]sealiface.PreCommitBatchRes, error) {
+	// 开始构造批量提交 PreCommit 消息
 	params := miner5.PreCommitSectorBatchParams{}
+	// 这批扇区应该预先只要的钱
 	deposit := big.Zero()
+	// 扇区提交的结果
 	var res sealiface.PreCommitBatchRes
 
 	for _, p := range b.todo {
@@ -214,18 +231,21 @@ func (b *PreCommitBatcher) processBatch(cfg sealiface.Config) ([]sealiface.PreCo
 		deposit = big.Add(deposit, p.deposit)
 	}
 
+	// 序列化消息参数
 	enc := new(bytes.Buffer)
 	if err := params.MarshalCBOR(enc); err != nil {
 		return []sealiface.PreCommitBatchRes{res}, xerrors.Errorf("couldn't serialize PreCommitSectorBatchParams: %w", err)
 	}
 
+	// 获取miner 相关信息
 	mi, err := b.api.StateMinerInfo(b.mctx, b.maddr, nil)
 	if err != nil {
 		return []sealiface.PreCommitBatchRes{res}, xerrors.Errorf("couldn't get miner info: %w", err)
 	}
 
+	// 这是我们提交这条消息最少需要的代币
 	goodFunds := big.Add(deposit, b.feeCfg.MaxPreCommitGasFee)
-
+	// 找到一个可以提交这条消息的地址
 	from, _, err := b.addrSel(b.mctx, mi, api.PreCommitAddr, goodFunds, deposit)
 	if err != nil {
 		return []sealiface.PreCommitBatchRes{res}, xerrors.Errorf("no good address found: %w", err)
@@ -254,6 +274,7 @@ func (b *PreCommitBatcher) AddPreCommit(ctx context.Context, s SectorInfo, depos
 	sn := s.SectorNumber
 
 	b.lk.Lock()
+	//设置该扇区的最晚提交时间
 	b.deadlines[sn] = getSectorDeadline(curEpoch, s)
 	b.todo[sn] = &preCommitEntry{
 		deposit: deposit,
@@ -292,15 +313,18 @@ func (b *PreCommitBatcher) Flush(ctx context.Context) ([]sealiface.PreCommitBatc
 	}
 }
 
+// Pending 返回正在等待批量提交的扇区Actor
 func (b *PreCommitBatcher) Pending(ctx context.Context) ([]abi.SectorID, error) {
 	b.lk.Lock()
 	defer b.lk.Unlock()
 
+	// 获取 miner 的ID
 	mid, err := address.IDFromAddress(b.maddr)
 	if err != nil {
 		return nil, err
 	}
 
+	// 表示等待被批量提交的Sector
 	res := make([]abi.SectorID, 0)
 	for _, s := range b.todo {
 		res = append(res, abi.SectorID{
