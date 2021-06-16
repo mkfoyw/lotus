@@ -41,16 +41,18 @@ type PreCommitBatcher struct {
 	feeCfg    FeeConfig
 	getConfig GetSealingConfigFunc
 
-	// 每个扇区的最晚提交信息
+	// 计算每个扇区的最晚提交时间
 	deadlines map[abi.SectorNumber]time.Time
-	// 等待批量提交的 PreCommit 信息
+	// 为每一个扇区生成一个批量提交信息， 以便后面批量提交
 	todo map[abi.SectorNumber]*preCommitEntry
-	// 该扇区等待上链的消息
+	// 为每一个扇区设置一个channel， 来接收提交结果。
 	waiting map[abi.SectorNumber][]chan sealiface.PreCommitBatchRes
 
 	notify, stop, stopped chan struct{}
-	force                 chan chan []sealiface.PreCommitBatchRes
-	lk                    sync.Mutex
+
+	// 用来接收用户手动强制打包正在等待的 PreCommit 的请求， 并通过该channel 把提交的结果发送会给用户。
+	force chan chan []sealiface.PreCommitBatchRes
+	lk    sync.Mutex
 }
 
 func NewPreCommitBatcher(mctx context.Context, maddr address.Address, api PreCommitBatcherApi, addrSel AddrSel, feeCfg FeeConfig, getConfig GetSealingConfigFunc) *PreCommitBatcher {
@@ -78,6 +80,7 @@ func NewPreCommitBatcher(mctx context.Context, maddr address.Address, api PreCom
 }
 
 func (b *PreCommitBatcher) run() {
+	// 当用户手动批量的提交 PreCommit 消息时， 通过该管道把提交的结果发送给给用户。
 	var forceRes chan []sealiface.PreCommitBatchRes
 	var lastRes []sealiface.PreCommitBatchRes
 
@@ -114,12 +117,14 @@ func (b *PreCommitBatcher) run() {
 	}
 }
 
+// batchWait 返回我们下次提交需要等待的时间
 func (b *PreCommitBatcher) batchWait(maxWait, slack time.Duration) <-chan time.Time {
 	now := time.Now()
 
 	b.lk.Lock()
 	defer b.lk.Unlock()
 
+	// 没有扇区 需要去提交
 	if len(b.todo) == 0 {
 		return nil
 	}
@@ -158,8 +163,10 @@ func (b *PreCommitBatcher) batchWait(maxWait, slack time.Duration) <-chan time.T
 
 // maybeStartBatch 判断是否开始打包 PreCommit 信息
 // 输入参数：
-//	   nofif: 当前等待的 PreCommit 信息， 小于我们设置的最多能够批量提交的消息是否不要进行打包
-//     after: 当前等待的 PreCommit 数量， 小于我们设置的最少能够批量提交的消息是否不要进行打包
+//	   nofify：当前有 PreCommit 可以进行打包
+//     after: 当前已经达到某些 PreCommit 最长等待时间， 此时必须去打包。
+//返回参数：
+//	  批量提交扇区的结果， 以及 error
 func (b *PreCommitBatcher) maybeStartBatch(notif, after bool) ([]sealiface.PreCommitBatchRes, error) {
 	b.lk.Lock()
 	defer b.lk.Unlock()
@@ -186,22 +193,25 @@ func (b *PreCommitBatcher) maybeStartBatch(notif, after bool) ([]sealiface.PreCo
 	}
 
 	// todo support multiple batches
-	// 开始处理批量提交 PreCommit 消息
+	// 开始处理批量提交 PreCommit 消息， 并等待返回提交结果
 	res, err := b.processBatch(cfg)
 	if err != nil && len(res) == 0 {
 		return nil, err
 	}
 
+	// 消息已经提交成功
 	for _, r := range res {
 		if err != nil {
 			r.Error = err.Error()
 		}
 
 		for _, sn := range r.Sectors {
+			//给每个扇区发送提交结果
 			for _, ch := range b.waiting[sn] {
 				ch <- r // buffered
 			}
 
+			//清除一些缓存
 			delete(b.waiting, sn)
 			delete(b.todo, sn)
 			delete(b.deadlines, sn)
@@ -211,7 +221,7 @@ func (b *PreCommitBatcher) maybeStartBatch(notif, after bool) ([]sealiface.PreCo
 	return res, nil
 }
 
-// processBatch 打包 PreCommit 消息，然后进行批量提交 PreCommit 信息
+// processBatch 打包 PreCommit 消息，然后进行提交， 并返回提交结果
 func (b *PreCommitBatcher) processBatch(cfg sealiface.Config) ([]sealiface.PreCommitBatchRes, error) {
 	// 开始构造批量提交 PreCommit 消息
 	params := miner5.PreCommitSectorBatchParams{}
@@ -225,9 +235,11 @@ func (b *PreCommitBatcher) processBatch(cfg sealiface.Config) ([]sealiface.PreCo
 			log.Infow("precommit batch full")
 			break
 		}
-
+		// 添加本次批量提交的扇区
 		res.Sectors = append(res.Sectors, p.pci.SectorNumber)
+		// 添加本次批量提交的扇区信息
 		params.Sectors = append(params.Sectors, *p.pci)
+		// 计算总的需要质押金额
 		deposit = big.Add(deposit, p.deposit)
 	}
 
@@ -264,6 +276,7 @@ func (b *PreCommitBatcher) processBatch(cfg sealiface.Config) ([]sealiface.PreCo
 }
 
 // register PreCommit, wait for batch message, return message CID
+// AddPreCommit 添加一个扇区去准备批量提交， 并等待该扇区的提交结果。
 func (b *PreCommitBatcher) AddPreCommit(ctx context.Context, s SectorInfo, deposit abi.TokenAmount, in *miner0.SectorPreCommitInfo) (res sealiface.PreCommitBatchRes, err error) {
 	_, curEpoch, err := b.api.ChainHead(b.mctx)
 	if err != nil {
@@ -276,20 +289,25 @@ func (b *PreCommitBatcher) AddPreCommit(ctx context.Context, s SectorInfo, depos
 	b.lk.Lock()
 	//设置该扇区的最晚提交时间
 	b.deadlines[sn] = getSectorDeadline(curEpoch, s)
+	// 正在等待的扇区
 	b.todo[sn] = &preCommitEntry{
 		deposit: deposit,
 		pci:     in,
 	}
 
+	// 创建该扇区用于接收提交结果的channel
 	sent := make(chan sealiface.PreCommitBatchRes, 1)
+	// 设置该扇区用于接收提交结果的channel
 	b.waiting[sn] = append(b.waiting[sn], sent)
 
 	select {
+	// 发送一个信号， 表示以及有消息正在等待， 请注意提交
 	case b.notify <- struct{}{}:
 	default: // already have a pending notification, don't need more
 	}
 	b.lk.Unlock()
 
+	// 用于等待该扇区的提交结果
 	select {
 	case c := <-sent:
 		return c, nil
@@ -298,11 +316,15 @@ func (b *PreCommitBatcher) AddPreCommit(ctx context.Context, s SectorInfo, depos
 	}
 }
 
+// Flush 强制提交正在等待的 PreCommit 消息， 并返回提交结果。
 func (b *PreCommitBatcher) Flush(ctx context.Context) ([]sealiface.PreCommitBatchRes, error) {
+	// 用户接收执行结果
 	resCh := make(chan []sealiface.PreCommitBatchRes, 1)
 	select {
+	// 发送提交请求到系统
 	case b.force <- resCh:
 		select {
+		//等待提交结果
 		case res := <-resCh:
 			return res, nil
 		case <-ctx.Done():
@@ -313,7 +335,7 @@ func (b *PreCommitBatcher) Flush(ctx context.Context) ([]sealiface.PreCommitBatc
 	}
 }
 
-// Pending 返回正在等待批量提交的扇区Actor
+// Pending 返回正在等待批量提交的扇区
 func (b *PreCommitBatcher) Pending(ctx context.Context) ([]abi.SectorID, error) {
 	b.lk.Lock()
 	defer b.lk.Unlock()

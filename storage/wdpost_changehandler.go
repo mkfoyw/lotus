@@ -32,6 +32,9 @@ type wdPoStCommands interface {
 	recordPoStFailure(err error, ts *types.TipSet, deadline *dline.Info)
 }
 
+// changeHandler 监听接收达到新的块， 并执行新的动作， 动作有两种：
+// 1. 是否能够执行 wdpost 动作
+// 2. 是否能够开始执行提交 windowpost 证明
 type changeHandler struct {
 	api        wdPoStCommands
 	actor      address.Address
@@ -40,6 +43,7 @@ type changeHandler struct {
 }
 
 func newChangeHandler(api wdPoStCommands, actor address.Address) *changeHandler {
+	// 创建 PostCache
 	posts := newPostsCache()
 	p := newProver(api, posts)
 	s := newSubmitter(api, posts)
@@ -51,6 +55,7 @@ func (ch *changeHandler) start() {
 	go ch.submitHdlr.run()
 }
 
+// update 接收到新的 henadchange 事件
 func (ch *changeHandler) update(ctx context.Context, revert *types.TipSet, advance *types.TipSet) error {
 	// Get the current deadline period
 	di, err := ch.api.StateMinerProvingDeadline(ctx, ch.actor, advance.Key())
@@ -58,6 +63,7 @@ func (ch *changeHandler) update(ctx context.Context, revert *types.TipSet, advan
 		return err
 	}
 
+	// 证明周期未开启
 	if !di.PeriodStarted() {
 		return nil // not proving anything yet
 	}
@@ -68,13 +74,14 @@ func (ch *changeHandler) update(ctx context.Context, revert *types.TipSet, advan
 		advance: advance,
 		di:      di,
 	}
-
+	// 发送 headChange 到 proveHandler
 	select {
 	case ch.proveHdlr.hcs <- hc:
 	case <-ch.proveHdlr.shutdownCtx.Done():
 	case <-ctx.Done():
 	}
 
+	// 发送 headCahnge 到 submmitHandler
 	select {
 	case ch.submitHdlr.hcs <- hc:
 	case <-ch.submitHdlr.shutdownCtx.Done():
@@ -94,9 +101,12 @@ func (ch *changeHandler) currentTSDI() (*types.TipSet, *dline.Info) {
 }
 
 // postsCache keeps a cache of PoSTs for each proving window
+// postcache 用于每个窗口的 post 证明缓存
 type postsCache struct {
+	// added 表示有新的 wdpost 生成事件
 	added chan *postInfo
 	lk    sync.RWMutex
+	// cache 用于快速的能够找到每个 epoch 能够提交的wdpost 结果
 	cache map[abi.ChainEpoch][]miner.SubmitWindowedPoStParams
 }
 
@@ -107,6 +117,7 @@ func newPostsCache() *postsCache {
 	}
 }
 
+// add 添加某个deadline 的 wdpost 证明结果
 func (c *postsCache) add(di *dline.Info, posts []miner.SubmitWindowedPoStParams) {
 	c.lk.Lock()
 	defer c.lk.Unlock()
@@ -120,6 +131,7 @@ func (c *postsCache) add(di *dline.Info, posts []miner.SubmitWindowedPoStParams)
 	}
 }
 
+// get 得到某个deadline 的 wdpost 证明结果
 func (c *postsCache) get(di *dline.Info) ([]miner.SubmitWindowedPoStParams, bool) {
 	c.lk.RLock()
 	defer c.lk.RUnlock()
@@ -142,9 +154,9 @@ type currentPost struct {
 
 type postResult struct {
 	ts       *types.TipSet
-	currPost *currentPost
-	posts    []miner.SubmitWindowedPoStParams
-	err      error
+	currPost *currentPost                     //当前 wdpost 的相关信息
+	posts    []miner.SubmitWindowedPoStParams // 当前 wdpost  的提交的 wdpost 参数。
+	err      error                            // 执行生成 wdpost 证明参数的错误信息
 }
 
 // proveHandler generates proofs
@@ -152,9 +164,12 @@ type proveHandler struct {
 	api   wdPoStCommands
 	posts *postsCache
 
+	// 获取 wdpost proofs 结果， 便于异步执行wdpost
 	postResults chan *postResult
-	hcs         chan *headChange
+	// 获取HeadChnage 事件
+	hcs chan *headChange
 
+	// 当前正在生成的 Post 的证明
 	current *currentPost
 
 	shutdownCtx context.Context
@@ -210,6 +225,7 @@ func (p *proveHandler) run() {
 	}
 }
 
+// processHeadChange  proveHandler 处理 HeadChange 事件
 func (p *proveHandler) processHeadChange(ctx context.Context, newTS *types.TipSet, di *dline.Info) {
 	// If the post window has expired, abort the current proof
 	if p.current != nil && newTS.Height() >= p.current.di.Close {
@@ -236,12 +252,14 @@ func (p *proveHandler) processHeadChange(ctx context.Context, newTS *types.TipSe
 	}
 
 	// Check if the chain is above the Challenge height for the post window
+	// 判断该 Deadline 的挑战窗口是否开启
 	if newTS.Height() < di.Challenge+ChallengeConfidence {
 		return
 	}
 
 	p.current = &currentPost{di: di}
 	curr := p.current
+	// 注意最后回掉函数用来发送wdpost 证明结果
 	p.current.abort = p.api.startGeneratePoST(ctx, newTS, di, func(posts []miner.SubmitWindowedPoStParams, err error) {
 		p.postResults <- &postResult{ts: newTS, currPost: curr, posts: posts, err: err}
 	})

@@ -21,7 +21,9 @@ func (sm *StateManager) ParentStateTsk(tsk types.TipSetKey) (*state.StateTree, e
 	return sm.ParentState(ts)
 }
 
+// ParentState 返回 tipset 的父状态树的树
 func (sm *StateManager) ParentState(ts *types.TipSet) (*state.StateTree, error) {
+
 	cst := cbor.NewCborStore(sm.cs.StateBlockstore())
 	state, err := state.LoadStateTree(cst, sm.parentState(ts))
 	if err != nil {
@@ -41,6 +43,7 @@ func (sm *StateManager) StateTree(st cid.Cid) (*state.StateTree, error) {
 	return state, nil
 }
 
+// LoadActor 根据地址加载一个 Actor
 func (sm *StateManager) LoadActor(_ context.Context, addr address.Address, ts *types.TipSet) (*types.Actor, error) {
 	state, err := sm.ParentState(ts)
 	if err != nil {

@@ -34,6 +34,7 @@ type proveRes struct {
 
 type postStatus string
 
+// 该wdpost 的证明状态
 const (
 	postStatusStart    postStatus = "postStatusStart"
 	postStatusProving  postStatus = "postStatusProving"

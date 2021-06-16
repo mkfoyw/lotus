@@ -122,6 +122,7 @@ func (b *CommitBatcher) run() {
 	}
 }
 
+// batchWait 返回最晚需要打包进行批量提交的时间
 func (b *CommitBatcher) batchWait(maxWait, slack time.Duration) <-chan time.Time {
 	now := time.Now()
 
@@ -215,6 +216,7 @@ func (b *CommitBatcher) maybeStartBatch(notif, after bool) ([]sealiface.CommitBa
 	return res, nil
 }
 
+// processBatch 开始打包 commit 消息， 然后进行批量提交， 然后返回批量提交的结果
 func (b *CommitBatcher) processBatch(cfg sealiface.Config) ([]sealiface.CommitBatchRes, error) {
 	tok, _, err := b.api.ChainHead(b.mctx)
 	if err != nil {
@@ -304,6 +306,7 @@ func (b *CommitBatcher) processBatch(cfg sealiface.Config) ([]sealiface.CommitBa
 	return []sealiface.CommitBatchRes{res}, nil
 }
 
+// processIndividually
 func (b *CommitBatcher) processIndividually() ([]sealiface.CommitBatchRes, error) {
 	mi, err := b.api.StateMinerInfo(b.mctx, b.maddr, nil)
 	if err != nil {
@@ -336,6 +339,7 @@ func (b *CommitBatcher) processIndividually() ([]sealiface.CommitBatchRes, error
 	return res, nil
 }
 
+// processSingle 提交一个扇区的 Commit 信息
 func (b *CommitBatcher) processSingle(mi miner.MinerInfo, sn abi.SectorNumber, info AggregateInput, tok TipSetToken) (cid.Cid, error) {
 	enc := new(bytes.Buffer)
 	params := &miner.ProveCommitSectorParams{
@@ -368,6 +372,7 @@ func (b *CommitBatcher) processSingle(mi miner.MinerInfo, sn abi.SectorNumber, i
 }
 
 // register commit, wait for batch message, return message CID
+// AddCommit 添加Commit 信息， 并等待其提交， 并返回提交结果。
 func (b *CommitBatcher) AddCommit(ctx context.Context, s SectorInfo, in AggregateInput) (res sealiface.CommitBatchRes, err error) {
 	_, curEpoch, err := b.api.ChainHead(b.mctx)
 	if err != nil {
@@ -390,6 +395,7 @@ func (b *CommitBatcher) AddCommit(ctx context.Context, s SectorInfo, in Aggregat
 	}
 	b.lk.Unlock()
 
+	//等待提交的结果
 	select {
 	case r := <-sent:
 		return r, nil
@@ -398,6 +404,7 @@ func (b *CommitBatcher) AddCommit(ctx context.Context, s SectorInfo, in Aggregat
 	}
 }
 
+// Flush 用户手动启用打包 Commit 信息， 并提交， 然后等待提交结果。
 func (b *CommitBatcher) Flush(ctx context.Context) ([]sealiface.CommitBatchRes, error) {
 	resCh := make(chan []sealiface.CommitBatchRes, 1)
 	select {
@@ -413,6 +420,7 @@ func (b *CommitBatcher) Flush(ctx context.Context) ([]sealiface.CommitBatchRes, 
 	}
 }
 
+// Pending 获取等待被提交的Commit 信息
 func (b *CommitBatcher) Pending(ctx context.Context) ([]abi.SectorID, error) {
 	b.lk.Lock()
 	defer b.lk.Unlock()
@@ -452,7 +460,7 @@ func (b *CommitBatcher) Stop(ctx context.Context) error {
 	}
 }
 
-// 获取提交 PreCommit 信息的截止日期
+// getSectorDeadline 获取提交 PreCommit 信息的截止日期
 func getSectorDeadline(curEpoch abi.ChainEpoch, si SectorInfo) time.Time {
 	// 获取票的最大有效期限(31.5个小时)
 	deadlineEpoch := si.TicketEpoch + policy.MaxPreCommitRandomnessLookback
@@ -474,6 +482,7 @@ func getSectorDeadline(curEpoch abi.ChainEpoch, si SectorInfo) time.Time {
 	return time.Now().Add(time.Duration(deadlineEpoch-curEpoch) * time.Duration(build.BlockDelaySecs) * time.Second)
 }
 
+// getSectorCollateral 获取扇区质押的金额
 func (b *CommitBatcher) getSectorCollateral(sn abi.SectorNumber, tok TipSetToken) (abi.TokenAmount, error) {
 	pci, err := b.api.StateSectorPreCommitInfo(b.mctx, b.maddr, sn, tok)
 	if err != nil {

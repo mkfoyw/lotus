@@ -219,6 +219,7 @@ func (ts *TipSet) MinTicketBlock() *BlockHeader {
 	return min
 }
 
+// ParentState 返回该tipset 的父tipset 的树根的cid
 func (ts *TipSet) ParentState() cid.Cid {
 	return ts.blks[0].ParentStateRoot
 }

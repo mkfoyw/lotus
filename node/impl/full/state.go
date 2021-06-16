@@ -187,12 +187,15 @@ func (a *StateAPI) StateMinerDeadlines(ctx context.Context, m address.Address, t
 	return out, nil
 }
 
+// StateMinerPartitions 获取在 tsk 中的第  dlIdx 的partions
 func (a *StateAPI) StateMinerPartitions(ctx context.Context, m address.Address, dlIdx uint64, tsk types.TipSetKey) ([]api.Partition, error) {
+	// 加载矿工 actor
 	act, err := a.StateManager.LoadActorTsk(ctx, m, tsk)
 	if err != nil {
 		return nil, xerrors.Errorf("failed to load miner actor: %w", err)
 	}
 
+	// 加载
 	mas, err := miner.Load(a.StateManager.ChainStore().ActorStore(ctx), act)
 	if err != nil {
 		return nil, xerrors.Errorf("failed to load miner actor state: %w", err)
@@ -249,11 +252,13 @@ func (m *StateModule) StateMinerProvingDeadline(ctx context.Context, addr addres
 		return nil, xerrors.Errorf("loading tipset %s: %w", tsk, err)
 	}
 
+	// 获取 actor
 	act, err := m.StateManager.LoadActor(ctx, addr, ts)
 	if err != nil {
 		return nil, xerrors.Errorf("failed to load miner actor: %w", err)
 	}
 
+	// 加载 miner actor
 	mas, err := miner.Load(m.StateManager.ChainStore().ActorStore(ctx), act)
 	if err != nil {
 		return nil, xerrors.Errorf("failed to load miner actor state: %w", err)

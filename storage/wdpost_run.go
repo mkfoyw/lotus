@@ -67,6 +67,7 @@ func (s *WindowPoStScheduler) recordProofsEvent(partitions []miner.PoStPartition
 }
 
 // startGeneratePoST kicks off the process of generating a PoST
+// startGeneratePoST 开始生成 wdpost 的证明， 最后的回掉函数用来发送执行结果。
 func (s *WindowPoStScheduler) startGeneratePoST(
 	ctx context.Context,
 	ts *types.TipSet,
@@ -455,10 +456,15 @@ func (s *WindowPoStScheduler) declareFaults(ctx context.Context, dlIdx uint64, p
 //  2. performs fault declarations for the next deadline.
 //  3. computes and submits proofs, batching partitions and making sure they
 //     don't exceed message capacity.
+//  runPoStCycle  允许一个完整的  wdpost 处理过程
+//  1. 执行下一个deadline 的 recovery 声明
+//  2. 指向下一个deadlien 的 fault 声明
+//  3. 计算和提交wdpost 证明， 其中的打包 partions 是为了确定不会超过一条消息的容量
 func (s *WindowPoStScheduler) runPoStCycle(ctx context.Context, di dline.Info, ts *types.TipSet) ([]miner.SubmitWindowedPoStParams, error) {
 	ctx, span := trace.StartSpan(ctx, "storage.runPoStCycle")
 	defer span.End()
 
+	// 进行 recovery 声明 和 fault 声明
 	go func() {
 		// TODO: extract from runPoStCycle, run on fault cutoff boundaries
 
@@ -530,22 +536,26 @@ func (s *WindowPoStScheduler) runPoStCycle(ctx context.Context, di dline.Info, t
 		return nil, xerrors.Errorf("failed to marshal address to cbor: %w", err)
 	}
 
+	// 获取当前的最新的 HeadChange
 	headTs, err := s.api.ChainHead(ctx)
 	if err != nil {
 		return nil, xerrors.Errorf("getting current head: %w", err)
 	}
 
+	// 获取随机数
 	rand, err := s.api.ChainGetRandomnessFromBeacon(ctx, headTs.Key(), crypto.DomainSeparationTag_WindowedPoStChallengeSeed, di.Challenge, buf.Bytes())
 	if err != nil {
 		return nil, xerrors.Errorf("failed to get chain randomness from beacon for window post (ts=%d; deadline=%d): %w", ts.Height(), di, err)
 	}
 
 	// Get the partitions for the given deadline
+	// 对多个 partion 进行分组
 	partitions, err := s.api.StateMinerPartitions(ctx, s.actor, di.Index, ts.Key())
 	if err != nil {
 		return nil, xerrors.Errorf("getting partitions: %w", err)
 	}
 
+	//
 	nv, err := s.api.StateNetworkVersion(ctx, ts.Key())
 	if err != nil {
 		return nil, xerrors.Errorf("getting network version: %w", err)

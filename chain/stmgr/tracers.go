@@ -9,6 +9,7 @@ import (
 	"github.com/ipfs/go-cid"
 )
 
+// ExecMonitor 用于收集消息的一些执行参数。
 type ExecMonitor interface {
 	// MessageApplied is called after a message has been applied. Returning an error will halt execution of any further messages.
 	MessageApplied(ctx context.Context, ts *types.TipSet, mcid cid.Cid, msg *types.Message, ret *vm.ApplyRet, implicit bool) error

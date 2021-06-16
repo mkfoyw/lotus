@@ -23,6 +23,7 @@ import (
 
 var _ State = (*state5)(nil)
 
+// 加载 v5 miner actor
 func load5(store adt.Store, root cid.Cid) (State, error) {
 	out := state5{store: store}
 	err := store.Get(store.Context(), root, &out)
@@ -332,6 +333,7 @@ func (s *state5) Info() (MinerInfo, error) {
 	return mi, nil
 }
 
+// DeadlineInfo 根据当前的 Epoch 和 Miner Actor 的 State 中 ProvingPeriodStart 和 CurentDeadline 可以计算出当前的Deadline 信息
 func (s *state5) DeadlineInfo(epoch abi.ChainEpoch) (*dline.Info, error) {
 	return s.State.RecordedDeadlineInfo(epoch), nil
 }

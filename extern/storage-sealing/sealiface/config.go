@@ -18,10 +18,12 @@ type Config struct {
 
 	AlwaysKeepUnsealedCopy bool
 
-	BatchPreCommits     bool
-	MaxPreCommitBatch   int
-	MinPreCommitBatch   int
-	PreCommitBatchWait  time.Duration
+	BatchPreCommits   bool
+	MaxPreCommitBatch int
+	MinPreCommitBatch int
+	// PreCommit 消息能够等待被提交的最长时间间隔
+	PreCommitBatchWait time.Duration
+	// 表示在计算最晚需要进行提交已经流逝的时间
 	PreCommitBatchSlack time.Duration
 
 	AggregateCommits bool

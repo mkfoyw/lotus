@@ -218,7 +218,8 @@ func (sm *StateManager) Stop(ctx context.Context) error {
 	return nil
 }
 
-//
+// TipSetState 获取指定高度的状态树的树根和消息收据树
+
 func (sm *StateManager) TipSetState(ctx context.Context, ts *types.TipSet) (st cid.Cid, rec cid.Cid, err error) {
 	ctx, span := trace.StartSpan(ctx, "tipSetState")
 	defer span.End()
@@ -548,6 +549,7 @@ func (sm *StateManager) computeTipSetState(ctx context.Context, ts *types.TipSet
 	return sm.ApplyBlocks(ctx, parentEpoch, pstate, blkmsgs, blks[0].Height, r, em, baseFee, ts)
 }
 
+// parentState 返回父tipset 的状态树的树根的Cid
 func (sm *StateManager) parentState(ts *types.TipSet) cid.Cid {
 	if ts == nil {
 		ts = sm.cs.GetHeaviestTipSet()

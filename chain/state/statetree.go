@@ -225,7 +225,7 @@ func NewStateTree(cst cbor.IpldStore, ver types.StateTreeVersion) (*StateTree, e
 	return s, nil
 }
 
-// LoadStateTree 加载状态树。
+// LoadStateTree  根据 状态树树根的cid 加载状态树
 func LoadStateTree(cst cbor.IpldStore, c cid.Cid) (*StateTree, error) {
 	// 定义状态树的树根
 	var root types.StateRoot
