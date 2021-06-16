@@ -23,9 +23,13 @@ type FaultTracker interface {
 }
 
 // CheckProvable returns unprovable sectors
+// CheckProvable 检查一些扇区是否能够进行证明。 具体的内容是：
+// 1. 检查扇区文件是否存在
+// 2. 检查扇区文件的大小是否存在
 func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof, sectors []storage.SectorRef, rg storiface.RGetter) (map[abi.SectorID]string, error) {
+	// 扇区错误的原因
 	var bad = make(map[abi.SectorID]string)
-
+	// 扇区的大小
 	ssize, err := pp.SectorSize()
 	if err != nil {
 		return nil, err
@@ -61,6 +65,7 @@ func (m *Manager) CheckProvable(ctx context.Context, pp abi.RegisteredPoStProof,
 				return nil
 			}
 
+			// 生成要检查的扇区路路径信息
 			toCheck := map[string]int64{
 				lp.Sealed:                        1,
 				filepath.Join(lp.Cache, "t_aux"): 0,

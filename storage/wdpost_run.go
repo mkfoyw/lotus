@@ -193,7 +193,7 @@ func (s *WindowPoStScheduler) runSubmitPoST(
 	return submitErr
 }
 
-// checkSectors 检查 check 中的未恢复的扇区是否能够恢复， 并返回可以恢复的扇区
+// checkSectors 检查指定扇区的文件是否存在， 以及文件大小是否一致， 并返回正确的扇区
 func (s *WindowPoStScheduler) checkSectors(ctx context.Context, check bitfield.BitField, tsk types.TipSetKey) (bitfield.BitField, error) {
 	mid, err := address.IDFromAddress(s.actor)
 	if err != nil {
@@ -207,6 +207,7 @@ func (s *WindowPoStScheduler) checkSectors(ctx context.Context, check bitfield.B
 	}
 
 	sectors := make(map[abi.SectorNumber]struct{})
+	//生成扇区的 SectorRef 信息
 	var tocheck []storage.SectorRef
 	for _, info := range sectorInfos {
 		sectors[info.SectorNumber] = struct{}{}
@@ -219,16 +220,20 @@ func (s *WindowPoStScheduler) checkSectors(ctx context.Context, check bitfield.B
 		})
 	}
 
+	// 返回错误扇区
 	bad, err := s.faultTracker.CheckProvable(ctx, s.proofType, tocheck, nil)
 	if err != nil {
 		return bitfield.BitField{}, xerrors.Errorf("checking provable sectors: %w", err)
 	}
+
+	// 删除坏的扇区
 	for id := range bad {
 		delete(sectors, id.Number)
 	}
 
 	log.Warnw("Checked sectors", "checked", len(tocheck), "good", len(sectors))
 
+	// 生成能够生成证明的扇区编号
 	sbf := bitfield.New()
 	for s := range sectors {
 		sbf.Set(uint64(s))
@@ -549,13 +554,12 @@ func (s *WindowPoStScheduler) runPoStCycle(ctx context.Context, di dline.Info, t
 	}
 
 	// Get the partitions for the given deadline
-	// 对多个 partion 进行分组
+	// 获取当前Deadline 的 Partions
 	partitions, err := s.api.StateMinerPartitions(ctx, s.actor, di.Index, ts.Key())
 	if err != nil {
 		return nil, xerrors.Errorf("getting partitions: %w", err)
 	}
 
-	//
 	nv, err := s.api.StateNetworkVersion(ctx, ts.Key())
 	if err != nil {
 		return nil, xerrors.Errorf("getting network version: %w", err)
@@ -563,12 +567,14 @@ func (s *WindowPoStScheduler) runPoStCycle(ctx context.Context, di dline.Info, t
 
 	// Split partitions into batches, so as not to exceed the number of sectors
 	// allowed in a single message
+	// 对 partions 进行分组， 打包进入不同的消息
 	partitionBatches, err := s.batchPartitions(partitions, nv)
 	if err != nil {
 		return nil, err
 	}
 
 	// Generate proofs in batches
+	// 每个分组的 windpost 证明参数
 	posts := make([]miner.SubmitWindowedPoStParams, 0, len(partitionBatches))
 	for batchIdx, batch := range partitionBatches {
 		batchPartitionStartIdx := 0
@@ -576,20 +582,27 @@ func (s *WindowPoStScheduler) runPoStCycle(ctx context.Context, di dline.Info, t
 			batchPartitionStartIdx += len(batch)
 		}
 
+		// 构造 第 i个分组的 windowpsot 参数
 		params := miner.SubmitWindowedPoStParams{
 			Deadline:   di.Index,
 			Partitions: make([]miner.PoStPartition, 0, len(batch)),
 			Proofs:     nil,
 		}
 
+		// 已经跳过的扇区数量
 		skipCount := uint64(0)
+		// 跳过的扇区
 		postSkipped := bitfield.New()
 		somethingToProve := false
 
 		// Retry until we run out of sectors to prove.
+		// 多次尝试生成 windpost
 		for retries := 0; ; retries++ {
+
 			var partitions []miner.PoStPartition
 			var sinfos []proof2.SectorInfo
+
+			// 遍历该分组的所有的扇区，并生成SectorInfo
 			for partIdx, partition := range batch {
 				// TODO: Can do this in parallel
 				toProve, err := bitfield.SubtractBitField(partition.LiveSectors, partition.FaultySectors)
@@ -601,21 +614,25 @@ func (s *WindowPoStScheduler) runPoStCycle(ctx context.Context, di dline.Info, t
 					return nil, xerrors.Errorf("adding recoveries to set of sectors to prove: %w", err)
 				}
 
+				// 剔除扇区文件不存在或者扇区文件大小不一致的扇区
 				good, err := s.checkSectors(ctx, toProve, ts.Key())
 				if err != nil {
 					return nil, xerrors.Errorf("checking sectors to skip: %w", err)
 				}
 
+				// 剔除前一次证明错误的扇区
 				good, err = bitfield.SubtractBitField(good, postSkipped)
 				if err != nil {
 					return nil, xerrors.Errorf("toProve - postSkipped: %w", err)
 				}
 
+				// 本次证明尝试跳过的扇区
 				skipped, err := bitfield.SubtractBitField(toProve, good)
 				if err != nil {
 					return nil, xerrors.Errorf("toProve - good: %w", err)
 				}
 
+				// 本次证明跳过扇区数量
 				sc, err := skipped.Count()
 				if err != nil {
 					return nil, xerrors.Errorf("getting skipped sector count: %w", err)
@@ -623,6 +640,7 @@ func (s *WindowPoStScheduler) runPoStCycle(ctx context.Context, di dline.Info, t
 
 				skipCount += sc
 
+				// 生成扇区SectorInfo
 				ssi, err := s.sectorsForProof(ctx, good, partition.AllSectors, ts)
 				if err != nil {
 					return nil, xerrors.Errorf("getting sorted sector info: %w", err)
@@ -707,7 +725,7 @@ func (s *WindowPoStScheduler) runPoStCycle(ctx context.Context, di dline.Info, t
 			}
 
 			// Proof generation failed, so retry
-
+			// Proof 生成失败， 且没有指出错误扇区， 发生严重错误， 结束生成证明。
 			if len(ps) == 0 {
 				// If we didn't skip any new sectors, we failed
 				// for some other reason and we need to abort.
@@ -727,6 +745,7 @@ func (s *WindowPoStScheduler) runPoStCycle(ctx context.Context, di dline.Info, t
 			}
 
 			skipCount += uint64(len(ps))
+			// 设置跳过的扇区
 			for _, sector := range ps {
 				postSkipped.Set(uint64(sector.Number))
 			}
@@ -784,7 +803,9 @@ func (s *WindowPoStScheduler) batchPartitions(partitions []api.Partition, nv net
 	return batches, nil
 }
 
+// sectorsForProof 为证明生成 sectorInfo
 func (s *WindowPoStScheduler) sectorsForProof(ctx context.Context, goodSectors, allSectors bitfield.BitField, ts *types.TipSet) ([]proof2.SectorInfo, error) {
+	//获取 good 扇区在连上的信息
 	sset, err := s.api.StateMinerSectors(ctx, s.actor, &goodSectors, ts.Key())
 	if err != nil {
 		return nil, err

@@ -92,12 +92,15 @@ func (a *StateAPI) StateNetworkName(ctx context.Context) (dtypes.NetworkName, er
 	return stmgr.GetNetworkName(ctx, a.StateManager, a.Chain.GetHeaviestTipSet().ParentState())
 }
 
+// StateMinerSectors 获取一些扇区在链上的信息
 func (a *StateAPI) StateMinerSectors(ctx context.Context, addr address.Address, sectorNos *bitfield.BitField, tsk types.TipSetKey) ([]*miner.SectorOnChainInfo, error) {
+	// 根据地址获取 type.Actor
 	act, err := a.StateManager.LoadActorTsk(ctx, addr, tsk)
 	if err != nil {
 		return nil, xerrors.Errorf("failed to load miner actor: %w", err)
 	}
 
+	// 通过 type.Actor.Head 获取 minerActor 的cid， 然后通过cid 加载 MinerActor
 	mas, err := miner.Load(a.StateManager.ChainStore().ActorStore(ctx), act)
 	if err != nil {
 		return nil, xerrors.Errorf("failed to load miner actor state: %w", err)
@@ -187,7 +190,11 @@ func (a *StateAPI) StateMinerDeadlines(ctx context.Context, m address.Address, t
 	return out, nil
 }
 
-// StateMinerPartitions 获取在 tsk 中的第  dlIdx 的partions
+// StateMinerPartitions 获取在 tsk 中的第  dlIdx 的partions， 其主要包含下面的几个步骤：
+// 1. 根据地址获取 actor， 然后 根据 types.Actor.Head 获取 MInerActor 的 Cid
+// 2. 根据 MinerActor 的 Cid 加载 MinerActor， 然后根据 MinerActor.Deadlines 获取Deadlines 的CID
+// 3. 根据 Deadlines 的cid加载Deadlines， 然后根据 dlIdx 获取对应Deadline 的CID
+// 4. 根据 Deadline 的Cid 加载Deadline
 func (a *StateAPI) StateMinerPartitions(ctx context.Context, m address.Address, dlIdx uint64, tsk types.TipSetKey) ([]api.Partition, error) {
 	// 加载矿工 actor
 	act, err := a.StateManager.LoadActorTsk(ctx, m, tsk)
@@ -195,19 +202,22 @@ func (a *StateAPI) StateMinerPartitions(ctx context.Context, m address.Address, 
 		return nil, xerrors.Errorf("failed to load miner actor: %w", err)
 	}
 
-	// 加载
+	// 根据actor 的地址加载 MinerACtor
 	mas, err := miner.Load(a.StateManager.ChainStore().ActorStore(ctx), act)
 	if err != nil {
 		return nil, xerrors.Errorf("failed to load miner actor state: %w", err)
 	}
 
+	// 加载 deadline
 	dl, err := mas.LoadDeadline(dlIdx)
 	if err != nil {
 		return nil, xerrors.Errorf("failed to load the deadline: %w", err)
 	}
 
+	// 加载该 Deadline 中的所有 Partions
 	var out []api.Partition
 	err = dl.ForEachPartition(func(_ uint64, part miner.Partition) error {
+		//
 		allSectors, err := part.AllSectors()
 		if err != nil {
 			return xerrors.Errorf("getting AllSectors: %w", err)

@@ -13,6 +13,7 @@ import (
 	"github.com/filecoin-project/lotus/chain/types"
 )
 
+// ParentStateTsk 从tipsetKey 获取该tipset 的父tipset的状态树
 func (sm *StateManager) ParentStateTsk(tsk types.TipSetKey) (*state.StateTree, error) {
 	ts, err := sm.cs.GetTipSetFromKey(tsk)
 	if err != nil {
@@ -52,7 +53,9 @@ func (sm *StateManager) LoadActor(_ context.Context, addr address.Address, ts *t
 	return state.GetActor(addr)
 }
 
+// LoadActorTsk 通过tipsetKey 获取状态树， 然后根据提供的地址从状态树获取type.Actor
 func (sm *StateManager) LoadActorTsk(_ context.Context, addr address.Address, tsk types.TipSetKey) (*types.Actor, error) {
+	//加载状态树
 	state, err := sm.ParentStateTsk(tsk)
 	if err != nil {
 		return nil, err
