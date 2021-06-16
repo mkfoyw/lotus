@@ -19,6 +19,8 @@ var ExistSectorStateList = map[SectorState]struct{}{
 	PreCommitBatchWait:    {},
 	WaitSeed:              {},
 	Committing:            {},
+	CommitFinalize:        {},
+	CommitFinalizeFailed:  {},
 	SubmitCommit:          {},
 	CommitWait:            {},
 	SubmitCommitAggregate: {},
@@ -65,8 +67,10 @@ const (
 	SubmitPreCommitBatch SectorState = "SubmitPreCommitBatch"
 	PreCommitBatchWait   SectorState = "PreCommitBatchWait"
 
-	WaitSeed   SectorState = "WaitSeed"   // waiting for seed
-	Committing SectorState = "Committing" // compute PoRep
+	WaitSeed             SectorState = "WaitSeed"       // waiting for seed
+	Committing           SectorState = "Committing"     // compute PoRep
+	CommitFinalize       SectorState = "CommitFinalize" // cleanup sector metadata before submitting the proof (early finalize)
+	CommitFinalizeFailed SectorState = "CommitFinalizeFailed"
 
 	// single commit
 	SubmitCommit SectorState = "SubmitCommit" // send commit message to the chain
@@ -108,7 +112,7 @@ func toStatState(st SectorState) statSectorState {
 	switch st {
 	case UndefinedSectorState, Empty, WaitDeals, AddPiece:
 		return sstStaging
-	case Packing, GetTicket, PreCommit1, PreCommit2, PreCommitting, PreCommitWait, SubmitPreCommitBatch, PreCommitBatchWait, WaitSeed, Committing, SubmitCommit, CommitWait, SubmitCommitAggregate, CommitAggregateWait, FinalizeSector:
+	case Packing, GetTicket, PreCommit1, PreCommit2, PreCommitting, PreCommitWait, SubmitPreCommitBatch, PreCommitBatchWait, WaitSeed, Committing, CommitFinalize, SubmitCommit, CommitWait, SubmitCommitAggregate, CommitAggregateWait, FinalizeSector:
 		return sstSealing
 	case Proving, Removed, Removing, Terminating, TerminateWait, TerminateFinality, TerminateFailed:
 		return sstProving

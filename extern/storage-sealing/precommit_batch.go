@@ -7,6 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/filecoin-project/lotus/build"
+	"github.com/filecoin-project/lotus/chain/actors/policy"
+
 	"github.com/ipfs/go-cid"
 	"golang.org/x/xerrors"
 
@@ -19,7 +22,10 @@ import (
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/chain/actors/builtin/miner"
 	"github.com/filecoin-project/lotus/extern/storage-sealing/sealiface"
+	"github.com/filecoin-project/lotus/node/config"
 )
+
+//go:generate go run github.com/golang/mock/mockgen -destination=mocks/mock_precommit_batcher.go -package=mocks . PreCommitBatcherApi
 
 type PreCommitBatcherApi interface {
 	SendMsg(ctx context.Context, from, to address.Address, method abi.MethodNum, value, maxFee abi.TokenAmount, params []byte) (cid.Cid, error)
@@ -38,14 +44,14 @@ type PreCommitBatcher struct {
 	maddr     address.Address
 	mctx      context.Context
 	addrSel   AddrSel
-	feeCfg    FeeConfig
+	feeCfg    config.MinerFeeConfig
 	getConfig GetSealingConfigFunc
 
 	// 计算每个扇区的最晚提交时间
-	deadlines map[abi.SectorNumber]time.Time
+	cutoffs map[abi.SectorNumber]time.Time
 	// 为每一个扇区生成一个批量提交信息， 以便后面批量提交
 	todo map[abi.SectorNumber]*preCommitEntry
-	// 为每一个扇区设置一个channel， 来接收提交结果。
+	// 计算每个扇区的最晚提交时间
 	waiting map[abi.SectorNumber][]chan sealiface.PreCommitBatchRes
 
 	notify, stop, stopped chan struct{}
@@ -55,7 +61,7 @@ type PreCommitBatcher struct {
 	lk    sync.Mutex
 }
 
-func NewPreCommitBatcher(mctx context.Context, maddr address.Address, api PreCommitBatcherApi, addrSel AddrSel, feeCfg FeeConfig, getConfig GetSealingConfigFunc) *PreCommitBatcher {
+func NewPreCommitBatcher(mctx context.Context, maddr address.Address, api PreCommitBatcherApi, addrSel AddrSel, feeCfg config.MinerFeeConfig, getConfig GetSealingConfigFunc) *PreCommitBatcher {
 	b := &PreCommitBatcher{
 		api:       api,
 		maddr:     maddr,
@@ -64,9 +70,9 @@ func NewPreCommitBatcher(mctx context.Context, maddr address.Address, api PreCom
 		feeCfg:    feeCfg,
 		getConfig: getConfig,
 
-		deadlines: map[abi.SectorNumber]time.Time{},
-		todo:      map[abi.SectorNumber]*preCommitEntry{},
-		waiting:   map[abi.SectorNumber][]chan sealiface.PreCommitBatchRes{},
+		cutoffs: map[abi.SectorNumber]time.Time{},
+		todo:    map[abi.SectorNumber]*preCommitEntry{},
+		waiting: map[abi.SectorNumber][]chan sealiface.PreCommitBatchRes{},
 
 		notify:  make(chan struct{}, 1),
 		force:   make(chan chan []sealiface.PreCommitBatchRes),
@@ -130,30 +136,30 @@ func (b *PreCommitBatcher) batchWait(maxWait, slack time.Duration) <-chan time.T
 	}
 
 	// 最晚必须要批量提交 PreCommit 消息的时间
-	var deadline time.Time
+	var cutoff time.Time
 	for sn := range b.todo {
-		sectorDeadline := b.deadlines[sn]
-		if deadline.IsZero() || (!sectorDeadline.IsZero() && sectorDeadline.Before(deadline)) {
-			deadline = sectorDeadline
+		sectorCutoff := b.cutoffs[sn]
+		if cutoff.IsZero() || (!sectorCutoff.IsZero() && sectorCutoff.Before(cutoff)) {
+			cutoff = sectorCutoff
 		}
 	}
 	for sn := range b.waiting {
-		sectorDeadline := b.deadlines[sn]
-		if deadline.IsZero() || (!sectorDeadline.IsZero() && sectorDeadline.Before(deadline)) {
-			deadline = sectorDeadline
+		sectorCutoff := b.cutoffs[sn]
+		if cutoff.IsZero() || (!sectorCutoff.IsZero() && sectorCutoff.Before(cutoff)) {
+			cutoff = sectorCutoff
 		}
 	}
 
-	if deadline.IsZero() {
+	if cutoff.IsZero() {
 		return time.After(maxWait)
 	}
 
-	deadline = deadline.Add(-slack)
-	if deadline.Before(now) {
+	cutoff = cutoff.Add(-slack)
+	if cutoff.Before(now) {
 		return time.After(time.Nanosecond) // can't return 0
 	}
 
-	wait := deadline.Sub(now)
+	wait := cutoff.Sub(now)
 	if wait > maxWait {
 		wait = maxWait
 	}
@@ -214,7 +220,7 @@ func (b *PreCommitBatcher) maybeStartBatch(notif, after bool) ([]sealiface.PreCo
 			//清除一些缓存
 			delete(b.waiting, sn)
 			delete(b.todo, sn)
-			delete(b.deadlines, sn)
+			delete(b.cutoffs, sn)
 		}
 	}
 
@@ -256,21 +262,25 @@ func (b *PreCommitBatcher) processBatch(cfg sealiface.Config) ([]sealiface.PreCo
 	}
 
 	// 这是我们提交这条消息最少需要的代币
-	goodFunds := big.Add(deposit, b.feeCfg.MaxPreCommitGasFee)
+	maxFee := b.feeCfg.MaxPreCommitBatchGasFee.FeeForSectors(len(params.Sectors))
+	// 这是我们提交这条消息最少需要的代币
+	goodFunds := big.Add(deposit, maxFee)
+
 	// 找到一个可以提交这条消息的地址
+
 	from, _, err := b.addrSel(b.mctx, mi, api.PreCommitAddr, goodFunds, deposit)
 	if err != nil {
 		return []sealiface.PreCommitBatchRes{res}, xerrors.Errorf("no good address found: %w", err)
 	}
 
-	mcid, err := b.api.SendMsg(b.mctx, from, b.maddr, miner.Methods.PreCommitSectorBatch, deposit, b.feeCfg.MaxPreCommitGasFee, enc.Bytes())
+	mcid, err := b.api.SendMsg(b.mctx, from, b.maddr, miner.Methods.PreCommitSectorBatch, deposit, maxFee, enc.Bytes())
 	if err != nil {
 		return []sealiface.PreCommitBatchRes{res}, xerrors.Errorf("sending message failed: %w", err)
 	}
 
 	res.Msg = &mcid
 
-	log.Infow("Sent ProveCommitAggregate message", "cid", mcid, "from", from, "sectors", len(b.todo))
+	log.Infow("Sent PreCommitSectorBatch message", "cid", mcid, "from", from, "sectors", len(b.todo))
 
 	return []sealiface.PreCommitBatchRes{res}, nil
 }
@@ -288,7 +298,7 @@ func (b *PreCommitBatcher) AddPreCommit(ctx context.Context, s SectorInfo, depos
 
 	b.lk.Lock()
 	//设置该扇区的最晚提交时间
-	b.deadlines[sn] = getSectorDeadline(curEpoch, s)
+	b.cutoffs[sn] = getPreCommitCutoff(curEpoch, s)
 	// 正在等待的扇区
 	b.todo[sn] = &preCommitEntry{
 		deposit: deposit,
@@ -375,4 +385,25 @@ func (b *PreCommitBatcher) Stop(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// TODO: If this returned epochs, it would make testing much easier
+func getPreCommitCutoff(curEpoch abi.ChainEpoch, si SectorInfo) time.Time {
+	cutoffEpoch := si.TicketEpoch + policy.MaxPreCommitRandomnessLookback
+	for _, p := range si.Pieces {
+		if p.DealInfo == nil {
+			continue
+		}
+
+		startEpoch := p.DealInfo.DealSchedule.StartEpoch
+		if startEpoch < cutoffEpoch {
+			cutoffEpoch = startEpoch
+		}
+	}
+
+	if cutoffEpoch <= curEpoch {
+		return time.Now()
+	}
+
+	return time.Now().Add(time.Duration(cutoffEpoch-curEpoch) * time.Duration(build.BlockDelaySecs) * time.Second)
 }

@@ -269,6 +269,15 @@ func (evt SectorCommitted) apply(state *SectorInfo) {
 }
 
 // 开始批量提交扇区 Commit 信息事件
+// like SectorCommitted, but finalizes before sending the proof to the chain
+type SectorProofReady struct {
+	Proof []byte
+}
+
+func (evt SectorProofReady) apply(state *SectorInfo) {
+	state.Proof = evt.Proof
+}
+
 type SectorSubmitCommitAggregate struct{}
 
 func (evt SectorSubmitCommitAggregate) apply(*SectorInfo) {}
