@@ -342,6 +342,9 @@ func DefaultStorageMiner() *StorageMiner {
 			// Default to 10 - tcp should still be able to figure this out, and
 			// it's the ratio between 10gbit / 1gbit
 			ParallelFetchLimit: 10,
+
+			// By default use the hardware resource filtering strategy.
+			ResourceFiltering: sectorstorage.ResourceFilteringHardware,
 		},
 
 		Dealmaking: DealmakingConfig{
@@ -374,12 +377,12 @@ func DefaultStorageMiner() *StorageMiner {
 			MaxCommitGasFee:    types.MustParseFIL("0.05"),
 
 			MaxPreCommitBatchGasFee: BatchFeeConfig{
-				Base:      types.MustParseFIL("0.025"), // TODO: update before v1.10.0
-				PerSector: types.MustParseFIL("0.025"), // TODO: update before v1.10.0
+				Base:      types.MustParseFIL("0"),
+				PerSector: types.MustParseFIL("0.02"),
 			},
 			MaxCommitBatchGasFee: BatchFeeConfig{
-				Base:      types.MustParseFIL("0.05"), // TODO: update before v1.10.0
-				PerSector: types.MustParseFIL("0.05"), // TODO: update before v1.10.0
+				Base:      types.MustParseFIL("0"),
+				PerSector: types.MustParseFIL("0.03"), // enough for 6 agg and 1nFIL base fee
 			},
 
 			MaxTerminateGasFee:     types.MustParseFIL("0.5"),
