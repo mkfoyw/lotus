@@ -47,13 +47,14 @@ type PreCommitBatcher struct {
 	feeCfg    config.MinerFeeConfig
 	getConfig GetSealingConfigFunc
 
-	// 计算每个扇区的最晚提交时间
+	// 扇区的最晚提交时间
 	cutoffs map[abi.SectorNumber]time.Time
-	// 为每一个扇区生成一个批量提交信息， 以便后面批量提交
+	// 扇区的PreCommit信息， 以便后面批量提交
 	todo map[abi.SectorNumber]*preCommitEntry
-	// 计算每个扇区的最晚提交时间
+	// 扇区等待提交的结果
 	waiting map[abi.SectorNumber][]chan sealiface.PreCommitBatchRes
 
+	// notify 表示有新的 PreCommit 提交
 	notify, stop, stopped chan struct{}
 
 	// 用来接收用户手动强制打包正在等待的 PreCommit 的请求， 并通过该channel 把提交的结果发送会给用户。
@@ -108,6 +109,7 @@ func (b *PreCommitBatcher) run() {
 			close(b.stopped)
 			return
 		case <-b.notify:
+			// 表示有新的 PreCommit 消息提交
 			sendAboveMax = true
 		case <-b.batchWait(cfg.PreCommitBatchWait, cfg.PreCommitBatchSlack):
 			sendAboveMin = true
@@ -286,7 +288,7 @@ func (b *PreCommitBatcher) processBatch(cfg sealiface.Config) ([]sealiface.PreCo
 }
 
 // register PreCommit, wait for batch message, return message CID
-// AddPreCommit 添加一个扇区去准备批量提交， 并等待该扇区的提交结果。
+// AddPreCommit 添加一个PreCommit， 等待批量提交， 并等待该扇区的提交结果。
 func (b *PreCommitBatcher) AddPreCommit(ctx context.Context, s SectorInfo, deposit abi.TokenAmount, in *miner0.SectorPreCommitInfo) (res sealiface.PreCommitBatchRes, err error) {
 	_, curEpoch, err := b.api.ChainHead(b.mctx)
 	if err != nil {
@@ -299,7 +301,7 @@ func (b *PreCommitBatcher) AddPreCommit(ctx context.Context, s SectorInfo, depos
 	b.lk.Lock()
 	//设置该扇区的最晚提交时间
 	b.cutoffs[sn] = getPreCommitCutoff(curEpoch, s)
-	// 正在等待的扇区
+	// 生成该扇区的提交信息
 	b.todo[sn] = &preCommitEntry{
 		deposit: deposit,
 		pci:     in,
@@ -311,7 +313,7 @@ func (b *PreCommitBatcher) AddPreCommit(ctx context.Context, s SectorInfo, depos
 	b.waiting[sn] = append(b.waiting[sn], sent)
 
 	select {
-	// 发送一个信号， 表示以及有消息正在等待， 请注意提交
+	// 发送一个信号， 表示新生成一个 PreCommit 信息， 请注意提交
 	case b.notify <- struct{}{}:
 	default: // already have a pending notification, don't need more
 	}

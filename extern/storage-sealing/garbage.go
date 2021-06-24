@@ -8,6 +8,7 @@ import (
 	"github.com/filecoin-project/specs-storage/storage"
 )
 
+//PledgeSector 创建一个垃圾扇区
 func (m *Sealing) PledgeSector(ctx context.Context) (storage.SectorRef, error) {
 	m.startupWait.Wait()
 

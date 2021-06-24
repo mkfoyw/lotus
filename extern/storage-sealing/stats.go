@@ -10,7 +10,9 @@ import (
 type statSectorState int
 
 const (
+	//在Packing之前的状态
 	sstStaging statSectorState = iota
+	// 在 Failed 之前的状态
 	sstSealing
 	sstFailed
 	sstProving

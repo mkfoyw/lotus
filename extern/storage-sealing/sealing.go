@@ -244,6 +244,7 @@ func (m *Sealing) currentSealProof(ctx context.Context) (abi.RegisteredSealProof
 	return miner.PreferredSealProofTypeFromWindowPoStType(ver, mi.WindowPoStProofType)
 }
 
+// minerSector 创建扇区 SecotrRef
 func (m *Sealing) minerSector(spt abi.RegisteredSealProof, num abi.SectorNumber) storage.SectorRef {
 	return storage.SectorRef{
 		ID:        m.minerSectorID(num),
@@ -251,6 +252,7 @@ func (m *Sealing) minerSector(spt abi.RegisteredSealProof, num abi.SectorNumber)
 	}
 }
 
+// minerSectorID 创建扇区 SectorID
 func (m *Sealing) minerSectorID(num abi.SectorNumber) abi.SectorID {
 	mid, err := address.IDFromAddress(m.maddr)
 	if err != nil {

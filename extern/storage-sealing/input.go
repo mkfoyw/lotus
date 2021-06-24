@@ -427,6 +427,7 @@ func (m *Sealing) tryCreateDealSector(ctx context.Context, sp abi.RegisteredSeal
 }
 
 // call with m.inputLk
+// createSector 创建一个空的扇区， 也就是获取扇区的id
 func (m *Sealing) createSector(ctx context.Context, cfg sealiface.Config, sp abi.RegisteredSealProof) (abi.SectorNumber, error) {
 	// Now actually create a new sector
 
@@ -435,12 +436,14 @@ func (m *Sealing) createSector(ctx context.Context, cfg sealiface.Config, sp abi
 		return 0, xerrors.Errorf("getting sector number: %w", err)
 	}
 
+	// 告诉底层的存储也创建一个扇区
 	err = m.sealer.NewSector(ctx, m.minerSector(sp, sid))
 	if err != nil {
 		return 0, xerrors.Errorf("initializing sector: %w", err)
 	}
 
 	// update stats early, fsm planner would do that async
+	// 更新正在密封的扇区统计信息
 	m.stats.updateSector(cfg, m.minerSectorID(sid), UndefinedSectorState)
 
 	return sid, nil
