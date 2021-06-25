@@ -1,0 +1,74 @@
+{
+  "Accounts": [
+    {
+      "Type": "account",
+      "Balance": "50000000000000000000000000",
+      "Meta": {
+        "Owner": "t3qjna3ieriyyvvg2ylmksupiyepeq4fcp46oqh5aq4zw57l6tkk7n2vxxdmbbbfbggvwqdlpez2i4j2mwihma"
+      }
+    }
+  ],
+  "Miners": [
+    {
+      "ID": "t01000",
+      "Owner": "t3qjna3ieriyyvvg2ylmksupiyepeq4fcp46oqh5aq4zw57l6tkk7n2vxxdmbbbfbggvwqdlpez2i4j2mwihma",
+      "Worker": "t3qjna3ieriyyvvg2ylmksupiyepeq4fcp46oqh5aq4zw57l6tkk7n2vxxdmbbbfbggvwqdlpez2i4j2mwihma",
+      "PeerId": "12D3KooWSspJHgY2kaCgi7NoWqPR4HyT5aFnDew2LsZF5evQyx63",
+      "MarketBalance": "0",
+      "PowerBalance": "0",
+      "SectorSize": 2048,
+      "Sectors": [
+        {
+          "CommR": {
+            "/": "bagboea4b5abcafs2rg4gsnkkn4qqi5kxdmc7ijxplu3ljjogjmkmbshvowuvq42g"
+          },
+          "CommD": {
+            "/": "baga6ea4seaqlbpntsalu5k7tkofhjl6a7c4yt55vgpvomaok6frfh6haqj2kcpq"
+          },
+          "SectorID": 0,
+          "Deal": {
+            "PieceCID": {
+              "/": "baga6ea4seaqlbpntsalu5k7tkofhjl6a7c4yt55vgpvomaok6frfh6haqj2kcpq"
+            },
+            "PieceSize": 2048,
+            "VerifiedDeal": false,
+            "Client": "t3qjna3ieriyyvvg2ylmksupiyepeq4fcp46oqh5aq4zw57l6tkk7n2vxxdmbbbfbggvwqdlpez2i4j2mwihma",
+            "Provider": "t01000",
+            "Label": "0",
+            "StartEpoch": 0,
+            "EndEpoch": 9001,
+            "StoragePricePerEpoch": "0",
+            "ProviderCollateral": "0",
+            "ClientCollateral": "0"
+          },
+          "ProofType": 0
+        }
+      ]
+    }
+  ],
+  "NetworkName": "localnet-3db3d6e2-2e48-4986-ac16-fc5f16adbac9",
+  "VerifregRootKey": {
+    "Type": "multisig",
+    "Balance": "0",
+    "Meta": {
+      "Signers": [
+        "t1ceb34gnsc6qk5dt6n7xg6ycwzasjhbxm3iylkiy"
+      ],
+      "Threshold": 1,
+      "VestingDuration": 0,
+      "VestingStart": 0
+    }
+  },
+  "RemainderAccount": {
+    "Type": "multisig",
+    "Balance": "0",
+    "Meta": {
+      "Signers": [
+        "t1ceb34gnsc6qk5dt6n7xg6ycwzasjhbxm3iylkiy"
+      ],
+      "Threshold": 1,
+      "VestingDuration": 0,
+      "VestingStart": 0
+    }
+  }
+}

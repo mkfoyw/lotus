@@ -46,6 +46,7 @@ var genesisCmd = &cli.Command{
 	},
 }
 
+// genesisNewCmd 创建空的创世快模版
 var genesisNewCmd = &cli.Command{
 	Name:        "new",
 	Description: "create new genesis template",
@@ -88,6 +89,7 @@ var genesisNewCmd = &cli.Command{
 	},
 }
 
+// 添加创世矿工的相关信息到创世块中
 var genesisAddMinerCmd = &cli.Command{
 	Name:        "add-miner",
 	Description: "add genesis miner",
@@ -102,6 +104,7 @@ var genesisAddMinerCmd = &cli.Command{
 			return err
 		}
 
+		// 读取创世块
 		var template genesis.Template
 		genb, err := ioutil.ReadFile(genf)
 		if err != nil {
@@ -112,6 +115,7 @@ var genesisAddMinerCmd = &cli.Command{
 			return xerrors.Errorf("unmarshal genesis template: %w", err)
 		}
 
+		//获取创世矿工相关信息
 		minf, err := homedir.Expand(cctx.Args().Get(1))
 		if err != nil {
 			return xerrors.Errorf("expand preseal file path: %w", err)
@@ -125,10 +129,13 @@ var genesisAddMinerCmd = &cli.Command{
 			return xerrors.Errorf("unmarshal miner info: %w", err)
 		}
 
+		// 添加创世矿工到创世块中
 		for mn, miner := range miners {
 			log.Infof("Adding miner %s to genesis template", mn)
 			{
+				//矿工 id
 				id := uint64(genesis2.MinerStart) + uint64(len(template.Miners))
+				//矿工的id地址
 				maddr, err := address.NewFromString(mn)
 				if err != nil {
 					return xerrors.Errorf("parsing miner address: %w", err)

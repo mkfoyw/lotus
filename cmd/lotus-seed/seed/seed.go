@@ -37,7 +37,9 @@ import (
 
 var log = logging.Logger("preseal")
 
+// PreSeal 预密封扇区， 然后返回创世矿工相关的信息， 以及密钥信息
 func PreSeal(maddr address.Address, spt abi.RegisteredSealProof, offset abi.SectorNumber, sectors int, sbroot string, preimage []byte, key *types.KeyInfo, fakeSectors bool) (*genesis.Miner, *types.KeyInfo, error) {
+	// 获取 miner 的 ID 100
 	mid, err := address.IDFromAddress(maddr)
 	if err != nil {
 		return nil, nil, err
@@ -63,6 +65,7 @@ func PreSeal(maddr address.Address, spt abi.RegisteredSealProof, offset abi.Sect
 		return nil, nil, err
 	}
 
+	// 预密封扇区的相关信息
 	var sealedSectors []*genesis.PreSeal
 	for i := 0; i < sectors; i++ {
 		sid := abi.SectorID{Miner: abi.ActorID(mid), Number: next}
@@ -85,6 +88,7 @@ func PreSeal(maddr address.Address, spt abi.RegisteredSealProof, offset abi.Sect
 		sealedSectors = append(sealedSectors, preseal)
 	}
 
+	// 生成 miner 相关的地址信息
 	var minerAddr *wallet.Key
 	if key != nil {
 		minerAddr, err = wallet.NewKey(*key)
@@ -123,10 +127,12 @@ func PreSeal(maddr address.Address, spt abi.RegisteredSealProof, offset abi.Sect
 		PeerId:        pid,
 	}
 
+	// 添加扇区的交易信息
 	if err := createDeals(miner, minerAddr, maddr, ssize); err != nil {
 		return nil, nil, xerrors.Errorf("creating deals: %w", err)
 	}
 
+	//添加存储相关的信息
 	{
 		b, err := json.MarshalIndent(&stores.LocalStorageMeta{
 			ID:       stores.ID(uuid.New().String()),

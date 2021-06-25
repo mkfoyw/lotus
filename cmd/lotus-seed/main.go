@@ -57,6 +57,7 @@ func main() {
 	}
 }
 
+// 生成创世矿工相关的信息: pre-seal-t01000.json 和 pre-seal-t1000.key
 var preSealCmd = &cli.Command{
 	Name: "pre-seal",
 	Flags: []cli.Flag{
@@ -100,12 +101,14 @@ var preSealCmd = &cli.Command{
 		},
 	},
 	Action: func(c *cli.Context) error {
+		// 存放扇区的路径
 		sdir := c.String("sector-dir")
 		sbroot, err := homedir.Expand(sdir)
 		if err != nil {
 			return err
 		}
 
+		// 矿工地址， 默认位 t0100
 		maddr, err := address.NewFromString(c.String("miner-addr"))
 		if err != nil {
 			return err
@@ -127,17 +130,20 @@ var preSealCmd = &cli.Command{
 			}
 		}
 
+		// 获取扇区的大小
 		sectorSizeInt, err := units.RAMInBytes(c.String("sector-size"))
 		if err != nil {
 			return err
 		}
 		sectorSize := abi.SectorSize(sectorSizeInt)
 
+		// 网络版本
 		nv := build.NewestNetworkVersion
 		if c.IsSet("network-version") {
 			nv = network.Version(c.Uint64("network-version"))
 		}
 
+		// 根据扇区大小和网络版本获取SealProofType
 		spt, err := miner.SealProofTypeFromSectorSize(sectorSize, nv)
 		if err != nil {
 			return err
@@ -148,6 +154,7 @@ var preSealCmd = &cli.Command{
 			return err
 		}
 
+		//创建创世矿工的相关信息， 包括 pre-seal-t01000.json 和 pre-seal-t0100.key
 		return seed.WriteGenesisMiner(maddr, sbroot, gm, key)
 	},
 }

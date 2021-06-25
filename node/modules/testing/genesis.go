@@ -51,6 +51,7 @@ func MakeGenesisMem(out io.Writer, template genesis.Template) func(bs dtypes.Cha
 	}
 }
 
+// MakeGenesis 创建创世块
 func MakeGenesis(outFile, genesisTemplate string) func(bs dtypes.ChainBlockstore, syscalls vm.SyscallBuilder, j journal.Journal) modules.Genesis {
 	return func(bs dtypes.ChainBlockstore, syscalls vm.SyscallBuilder, j journal.Journal) modules.Genesis {
 		return func() (*types.BlockHeader, error) {

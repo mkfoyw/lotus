@@ -10,9 +10,11 @@ import (
 // change how the node is constructed
 //
 // Options are applied in sequence
+// 函数性参数设置
 type Option func(*Settings) error
 
 // Options groups multiple options into one
+// Options 将多个参数组合成一个参数
 func Options(opts ...Option) Option {
 	return func(s *Settings) error {
 		for _, opt := range opts {
@@ -31,6 +33,7 @@ func Error(err error) Option {
 	}
 }
 
+// ApplyIf 根据 check 的值， 决定是否运用后面的配置。
 func ApplyIf(check func(s *Settings) bool, opts ...Option) Option {
 	return func(s *Settings) error {
 		if check(s) {
@@ -40,6 +43,7 @@ func ApplyIf(check func(s *Settings) bool, opts ...Option) Option {
 	}
 }
 
+// If 根据 b 的值， 决定是否运用后面的选项设置。
 func If(b bool, opts ...Option) Option {
 	return ApplyIf(func(s *Settings) bool {
 		return b

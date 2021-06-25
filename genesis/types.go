@@ -20,6 +20,7 @@ const (
 	TMultisig ActorType = "multisig"
 )
 
+// PreSeal 预密封的扇区信息
 type PreSeal struct {
 	CommR     cid.Cid
 	CommD     cid.Cid
@@ -76,6 +77,7 @@ type Actor struct {
 	Meta json.RawMessage
 }
 
+// Template 创世块模版
 type Template struct {
 	NetworkVersion network.Version
 	Accounts       []Actor
