@@ -51,6 +51,7 @@ const (
 	Wallet
 )
 
+// 根据仓库的类型初始化配置
 func defConfForType(t RepoType) interface{} {
 	switch t {
 	case FullNode:
@@ -72,13 +73,16 @@ var ErrRepoExists = xerrors.New("repo exists")
 
 // FsRepo is struct for repo, use NewFS to create
 type FsRepo struct {
-	path       string
+	//仓库路径
+	path string
+	//配置文件路径
 	configPath string
 }
 
 var _ Repo = &FsRepo{}
 
 // NewFS creates a repo instance based on a path on file system
+// NewFS 根据文件系统上的路径创建一个仓库
 func NewFS(path string) (*FsRepo, error) {
 	path, err := homedir.Expand(path)
 	if err != nil {
@@ -95,12 +99,16 @@ func (fsr *FsRepo) SetConfigPath(cfgPath string) {
 	fsr.configPath = cfgPath
 }
 
+// Exists 判断该仓库是否以及被初始化了
 func (fsr *FsRepo) Exists() (bool, error) {
+	//判断仓库中 datastore 是否存在
 	_, err := os.Stat(filepath.Join(fsr.path, fsDatastore))
+	//
 	notexist := os.IsNotExist(err)
 	if notexist {
 		err = nil
 
+		//判断仓库中 keystore 是否存在
 		_, err = os.Stat(filepath.Join(fsr.path, fsKeystore))
 		notexist = os.IsNotExist(err)
 		if notexist {
@@ -110,6 +118,8 @@ func (fsr *FsRepo) Exists() (bool, error) {
 	return !notexist, err
 }
 
+// Init 根据的仓库的类型初始化仓库。
+// 判断仓库是否被初始化， 主要通过 datastore 和 keystore 是否存在， 如果存在则已经初始化过， 否则就是没有初始化， 需要立即初始化。
 func (fsr *FsRepo) Init(t RepoType) error {
 	exist, err := fsr.Exists()
 	if err != nil {
@@ -125,6 +135,7 @@ func (fsr *FsRepo) Init(t RepoType) error {
 		return err
 	}
 
+	// 初始化配置
 	if err := fsr.initConfig(t); err != nil {
 		return xerrors.Errorf("init config: %w", err)
 	}
@@ -133,7 +144,9 @@ func (fsr *FsRepo) Init(t RepoType) error {
 
 }
 
+// initConfig 采用默认的配置生成 config.toml 文件
 func (fsr *FsRepo) initConfig(t RepoType) error {
+	// 判断配置文件是否存在
 	_, err := os.Stat(fsr.configPath)
 	if err == nil {
 		// exists
@@ -142,6 +155,7 @@ func (fsr *FsRepo) initConfig(t RepoType) error {
 		return err
 	}
 
+	// 创建配置文件
 	c, err := os.Create(fsr.configPath)
 	if err != nil {
 		return err
@@ -162,6 +176,7 @@ func (fsr *FsRepo) initConfig(t RepoType) error {
 	return nil
 }
 
+// initKeystore 创建 keystore 目录
 func (fsr *FsRepo) initKeystore() error {
 	kstorePath := filepath.Join(fsr.path, fsKeystore)
 	if _, err := os.Stat(kstorePath); err == nil {
@@ -218,7 +233,9 @@ func (fsr *FsRepo) APIToken() ([]byte, error) {
 }
 
 // Lock acquires exclusive lock on this repo
+// Lock 给仓库加上锁以便进行排他性的使用
 func (fsr *FsRepo) Lock(repoType RepoType) (LockedRepo, error) {
+	//判断目录是否已经被锁
 	locked, err := fslock.Locked(fsr.path, fsLock)
 	if err != nil {
 		return nil, xerrors.Errorf("could not check lock status: %w", err)
@@ -227,6 +244,7 @@ func (fsr *FsRepo) Lock(repoType RepoType) (LockedRepo, error) {
 		return nil, ErrRepoAlreadyLocked
 	}
 
+	// 给目录加上锁
 	closer, err := fslock.Lock(fsr.path, fsLock)
 	if err != nil {
 		return nil, xerrors.Errorf("could not lock the repo: %w", err)
@@ -307,15 +325,18 @@ func (fsr *fsLockedRepo) Close() error {
 }
 
 // Blockstore returns a blockstore for the provided data domain.
+// Blockstore 为给定的数据域提供一个块存储
 func (fsr *fsLockedRepo) Blockstore(ctx context.Context, domain BlockstoreDomain) (blockstore.Blockstore, error) {
 	if domain != UniversalBlockstore {
 		return nil, ErrInvalidBlockstoreDomain
 	}
 
 	fsr.bsOnce.Do(func() {
+		//数据存储路径
 		path := fsr.join(filepath.Join(fsDatastore, "chain"))
 		readonly := fsr.readonly
 
+		//创建目录
 		if err := os.MkdirAll(path, 0755); err != nil {
 			fsr.bsErr = err
 			return

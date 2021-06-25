@@ -4,6 +4,8 @@ import "sync"
 
 // EventTypeRegistry is a component that constructs tracked EventType tokens,
 // for usage with a Journal.
+// 事件类型注册表。 事件类型是由事件发生的系统名字以及发生的事件名字构成。
+// 事件注册表会根据系统名字和事件的名字生成一个事件类型。
 type EventTypeRegistry interface {
 
 	// RegisterEventType introduces a new event type to a journal, and

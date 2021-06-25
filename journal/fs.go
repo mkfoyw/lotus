@@ -15,15 +15,21 @@ import (
 const RFC3339nocolon = "2006-01-02T150405Z0700"
 
 // fsJournal is a basic journal backed by files on a filesystem.
+// fsJournal 基于文件的日志系统
 type fsJournal struct {
 	EventTypeRegistry
 
-	dir       string
+	// 日志保存的目录
+	dir string
+	// 文件的大小
 	sizeLimit int64
 
-	fi    *os.File
+	// 存放日志的文件
+	fi *os.File
+	// 当前文件大小
 	fSize int64
 
+	// 用于接收外部事件的channel
 	incoming chan *Event
 
 	closing chan struct{}
@@ -32,6 +38,7 @@ type fsJournal struct {
 
 // OpenFSJournal constructs a rolling filesystem journal, with a default
 // per-file size limit of 1GiB.
+// OpenFSJournal 基于文件创建一个滚动的日志系统， 默认每个文件的大小是1G
 func OpenFSJournal(lr repo.LockedRepo, disabled DisabledEvents) (Journal, error) {
 	dir := filepath.Join(lr.Path(), "journal")
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -56,6 +63,7 @@ func OpenFSJournal(lr repo.LockedRepo, disabled DisabledEvents) (Journal, error)
 	return f, nil
 }
 
+// RecordEvent 发送一个事件到日志系统
 func (f *fsJournal) RecordEvent(evtType EventType, supplier func() interface{}) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -67,6 +75,7 @@ func (f *fsJournal) RecordEvent(evtType EventType, supplier func() interface{}) 
 		return
 	}
 
+	// 创建事件
 	je := &Event{
 		EventType: evtType,
 		Timestamp: build.Clock.Now(),
@@ -124,10 +133,12 @@ func (f *fsJournal) runLoop() {
 
 	for {
 		select {
+		// 有外部需要记录的事件到来
 		case je := <-f.incoming:
 			if err := f.putEvent(je); err != nil {
 				log.Errorw("failed to write out journal event", "event", je, "err", err)
 			}
+		// 日志系统正在关闭
 		case <-f.closing:
 			_ = f.fi.Close()
 			return

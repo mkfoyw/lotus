@@ -285,6 +285,7 @@ var DefaultDefaultMaxFee = types.MustParseFIL("0.07")
 var DefaultSimultaneousTransfers = uint64(20)
 
 // DefaultFullNode returns the default config
+// 生成 FullNode 仓库的某人配置文件
 func DefaultFullNode() *FullNode {
 	return &FullNode{
 		Common: defCommon(),

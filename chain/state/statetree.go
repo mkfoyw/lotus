@@ -162,7 +162,9 @@ func VersionForNetwork(ver network.Version) (types.StateTreeVersion, error) {
 	}
 }
 
+// NewStateTree 根据网络版本创建一颗空的状态树
 func NewStateTree(cst cbor.IpldStore, ver types.StateTreeVersion) (*StateTree, error) {
+	//状态树信息
 	var info cid.Cid
 	switch ver {
 	case types.StateTreeVersion0:

@@ -29,6 +29,7 @@ const minFds = 2048
 const maxFds = 16 << 10
 
 // userMaxFDs returns the value of LOTUS_FD_MAX
+// 返回最大能够打开的文件数量
 func userMaxFDs() uint64 {
 	// check if the LOTUS_FD_MAX is set up and if it does
 	// not have a valid fds number notify the user

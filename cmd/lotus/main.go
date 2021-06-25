@@ -22,8 +22,10 @@ var log = logging.Logger("main")
 var AdvanceBlockCmd *cli.Command
 
 func main() {
+	//设置节点类型
 	api.RunningNodeType = api.NodeFull
 
+	//设置程序的日志级别
 	lotuslog.SetupLogLevels()
 
 	local := []*cli.Command{

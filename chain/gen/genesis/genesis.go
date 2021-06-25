@@ -139,6 +139,7 @@ func MakeInitialStateTree(ctx context.Context, bs bstore.Blockstore, template ge
 		return nil, nil, xerrors.Errorf("putting empty object: %w", err)
 	}
 
+	// 获取网络版本
 	sv, err := state.VersionForNetwork(template.NetworkVersion)
 	if err != nil {
 		return nil, nil, xerrors.Errorf("getting state tree version: %w", err)

@@ -33,6 +33,7 @@ type Storage interface {
 	ReadPiece(ctx context.Context, writer io.Writer, sector storage.SectorRef, offset storiface.UnpaddedByteIndex, size abi.UnpaddedPieceSize) (bool, error)
 }
 
+// 用于验证各种证明信息
 type Verifier interface {
 	VerifySeal(proof5.SealVerifyInfo) (bool, error)
 	VerifyAggregateSeals(aggregate proof5.AggregateSealVerifyProofAndInfos) (bool, error)

@@ -171,6 +171,7 @@ var DaemonCmd = &cli.Command{
 			}
 		}
 
+		// 记录 CPU 运行状况
 		if prof := cctx.String("pprof"); prof != "" {
 			profile, err := os.Create(prof)
 			if err != nil {
@@ -216,27 +217,32 @@ var DaemonCmd = &cli.Command{
 			}
 		}
 
+		//创建仓库
 		r, err := repo.NewFS(cctx.String("repo"))
 		if err != nil {
 			return xerrors.Errorf("opening fs repo: %w", err)
 		}
 
+		//设置仓库路径
 		if cctx.String("config") != "" {
 			r.SetConfigPath(cctx.String("config"))
 		}
 
+		// 根据节点类型初始化仓库
 		err = r.Init(repo.FullNode)
 		if err != nil && err != repo.ErrRepoExists {
 			return xerrors.Errorf("repo init error: %w", err)
 		}
 		freshRepo := err != repo.ErrRepoExists
 
+		// 获取证明参数
 		if !isLite {
 			if err := paramfetch.GetParams(lcli.ReqContext(cctx), build.ParametersJSON(), build.SrsJSON(), 0); err != nil {
 				return xerrors.Errorf("fetching proof parameters: %w", err)
 			}
 		}
 
+		// 获取创世块的序列化字符串
 		var genBytes []byte
 		if cctx.String("genesis") != "" {
 			genBytes, err = ioutil.ReadFile(cctx.String("genesis"))
@@ -277,6 +283,7 @@ var DaemonCmd = &cli.Command{
 			}
 		}
 
+		//
 		genesis := node.Options()
 		if len(genBytes) > 0 {
 			genesis = node.Override(new(modules.Genesis), modules.LoadGenesis(genBytes))
@@ -423,8 +430,11 @@ func importKey(ctx context.Context, api api.FullNode, f string) error {
 	return nil
 }
 
+// ImportChain 导入链
 func ImportChain(ctx context.Context, r repo.Repo, fname string, snapshot bool) (err error) {
+	//链数据
 	var rd io.Reader
+	//链的数据大小
 	var l int64
 	if strings.HasPrefix(fname, "http://") || strings.HasPrefix(fname, "https://") {
 		resp, err := http.Get(fname) //nolint:gosec
@@ -460,17 +470,21 @@ func ImportChain(ctx context.Context, r repo.Repo, fname string, snapshot bool) 
 		l = st.Size()
 	}
 
+	// 仓库加上锁
 	lr, err := r.Lock(repo.FullNode)
 	if err != nil {
 		return err
 	}
+	// 去除仓库锁
 	defer lr.Close() //nolint:errcheck
 
+	//返回存储区块链的数据库 datastore/chain
 	bs, err := lr.Blockstore(ctx, repo.UniversalBlockstore)
 	if err != nil {
 		return xerrors.Errorf("failed to open blockstore: %w", err)
 	}
 
+	//返回存储元数据的数据库 datastore/metadata
 	mds, err := lr.Datastore(context.TODO(), "/metadata")
 	if err != nil {
 		return err
