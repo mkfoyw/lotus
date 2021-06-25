@@ -21,6 +21,7 @@ var (
 	Address = builtin5.SystemActorAddr
 )
 
+// MakeState 根据Actor 的版本， 创建不同的 SystemActor
 func MakeState(store adt.Store, av actors.Version) (State, error) {
 	switch av {
 
@@ -43,6 +44,7 @@ func MakeState(store adt.Store, av actors.Version) (State, error) {
 	return nil, xerrors.Errorf("unknown actor version %d", av)
 }
 
+// GetActorCodeID 根据 Actor 的版本获取 SystemActor 的Code 的 cid
 func GetActorCodeID(av actors.Version) (cid.Cid, error) {
 	switch av {
 
@@ -66,6 +68,7 @@ func GetActorCodeID(av actors.Version) (cid.Cid, error) {
 	return cid.Undef, xerrors.Errorf("unknown actor version %d", av)
 }
 
+// 获取 SystemActor 的状态
 type State interface {
 	GetState() interface{}
 }

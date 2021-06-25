@@ -75,6 +75,7 @@ func Load(store adt.Store, act *types.Actor) (State, error) {
 	return nil, xerrors.Errorf("unknown actor code %s", act.Code)
 }
 
+// MakeState 根据 actor 版本， 创建空的 SystemActor 的 State
 func MakeState(store adt.Store, av actors.Version, networkName string) (State, error) {
 	switch av {
 

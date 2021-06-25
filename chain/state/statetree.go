@@ -164,8 +164,8 @@ func VersionForNetwork(ver network.Version) (types.StateTreeVersion, error) {
 
 // NewStateTree 根据网络版本创建一颗空的状态树
 func NewStateTree(cst cbor.IpldStore, ver types.StateTreeVersion) (*StateTree, error) {
-	//状态树信息
 	var info cid.Cid
+	//存储状态的 info， 并返回info 的cid
 	switch ver {
 	case types.StateTreeVersion0:
 		// info is undefined
@@ -179,6 +179,7 @@ func NewStateTree(cst cbor.IpldStore, ver types.StateTreeVersion) (*StateTree, e
 		return nil, xerrors.Errorf("unsupported state tree version: %d", ver)
 	}
 
+	//  近一步封装数据库
 	store := adt.WrapStore(context.TODO(), cst)
 	var hamt adt.Map
 	switch ver {

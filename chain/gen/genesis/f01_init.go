@@ -23,6 +23,7 @@ import (
 	"github.com/filecoin-project/lotus/genesis"
 )
 
+// SetupInitActor 创建 InitActor
 func SetupInitActor(ctx context.Context, bs bstore.Blockstore, netname string, initialActors []genesis.Actor, rootVerifier genesis.Actor, remainder genesis.Actor, av actors.Version) (int64, *types.Actor, map[address.Address]address.Address, error) {
 	if len(initialActors) > MaxAccounts {
 		return 0, nil, nil, xerrors.New("too many initial actors")

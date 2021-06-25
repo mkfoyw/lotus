@@ -130,40 +130,42 @@ Genesis: {
 
 */
 
+// MakeInitialStateTree 根据创世块模版，创建创世快
 func MakeInitialStateTree(ctx context.Context, bs bstore.Blockstore, template genesis.Template) (*state.StateTree, map[address.Address]address.Address, error) {
 	// Create empty state tree
-
 	cst := cbor.NewCborStore(bs)
 	_, err := cst.Put(context.TODO(), []struct{}{})
 	if err != nil {
 		return nil, nil, xerrors.Errorf("putting empty object: %w", err)
 	}
 
-	// 获取网络版本
+	// 通过网络版本获取状态树的版本
 	sv, err := state.VersionForNetwork(template.NetworkVersion)
 	if err != nil {
 		return nil, nil, xerrors.Errorf("getting state tree version: %w", err)
 	}
 
+	// 根据状态树的版本， 创建一颗空的状态树
 	state, err := state.NewStateTree(cst, sv)
 	if err != nil {
 		return nil, nil, xerrors.Errorf("making new state tree: %w", err)
 	}
 
+	// 通过网络版本获取actor的版本
 	av := actors.VersionForNetwork(template.NetworkVersion)
 
 	// Create system actor
-
 	sysact, err := SetupSystemActor(ctx, bs, av)
 	if err != nil {
 		return nil, nil, xerrors.Errorf("setup system actor: %w", err)
 	}
+
+	// 添加系统actor 到状态树中
 	if err := state.SetActor(system.Address, sysact); err != nil {
 		return nil, nil, xerrors.Errorf("set system actor: %w", err)
 	}
 
 	// Create init actor
-
 	idStart, initact, keyIDs, err := SetupInitActor(ctx, bs, template.NetworkName, template.Accounts, template.VerifregRootKey, template.RemainderAccount, av)
 	if err != nil {
 		return nil, nil, xerrors.Errorf("setup init actor: %w", err)
@@ -546,10 +548,13 @@ func VerifyPreSealedData(ctx context.Context, cs *store.ChainStore, stateroot ci
 	return st, nil
 }
 
+// MakeGenesisBlock 根据创世块模版， 创建创世块
 func MakeGenesisBlock(ctx context.Context, j journal.Journal, bs bstore.Blockstore, sys vm.SyscallBuilder, template genesis.Template) (*GenesisBootstrap, error) {
 	if j == nil {
 		j = journal.NilJournal()
 	}
+
+	//初始化状态树
 	st, keyIDs, err := MakeInitialStateTree(ctx, bs, template)
 	if err != nil {
 		return nil, xerrors.Errorf("make initial state tree failed: %w", err)
