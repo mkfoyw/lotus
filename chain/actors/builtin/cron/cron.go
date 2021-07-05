@@ -17,6 +17,7 @@ import (
 	builtin5 "github.com/filecoin-project/specs-actors/v5/actors/builtin"
 )
 
+// 创建 V5 CronActor 的 State
 func MakeState(store adt.Store, av actors.Version) (State, error) {
 	switch av {
 

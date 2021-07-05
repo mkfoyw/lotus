@@ -76,6 +76,7 @@ func Load(store adt.Store, act *types.Actor) (State, error) {
 	return nil, xerrors.Errorf("unknown actor code %s", act.Code)
 }
 
+// 创建 VerifiedRegistryActor 的Sstae
 func MakeState(store adt.Store, av actors.Version, rootKeyAddress address.Address) (State, error) {
 	switch av {
 

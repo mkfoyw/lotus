@@ -30,15 +30,18 @@ func SetupInitActor(ctx context.Context, bs bstore.Blockstore, netname string, i
 	}
 
 	cst := cbor.NewCborStore(bs)
+	//创建 initActor 的 State
 	ist, err := init_.MakeState(adt.WrapStore(ctx, cst), av, netname)
 	if err != nil {
 		return 0, nil, nil, err
 	}
 
+	// 改变 initActor.NexitID 值
 	if err = ist.SetNextID(MinerStart); err != nil {
 		return 0, nil, nil, err
 	}
 
+	// 加载 AddressMap
 	amap, err := ist.AddressMap()
 	if err != nil {
 		return 0, nil, nil, err
@@ -47,7 +50,10 @@ func SetupInitActor(ctx context.Context, bs bstore.Blockstore, netname string, i
 	keyToId := map[address.Address]address.Address{}
 	counter := int64(AccountStart)
 
+	// 添加初始Actor
 	for _, a := range initialActors {
+
+		// 添加 Multisig Account 中所有的 地址
 		if a.Type == genesis.TMultisig {
 			var ainfo genesis.MultisigMeta
 			if err := json.Unmarshal(a.Meta, &ainfo); err != nil {
@@ -81,6 +87,7 @@ func SetupInitActor(ctx context.Context, bs bstore.Blockstore, netname string, i
 			return 0, nil, nil, xerrors.Errorf("unsupported account type: %s", a.Type)
 		}
 
+		//添加 普通的Account
 		var ainfo genesis.AccountMeta
 		if err := json.Unmarshal(a.Meta, &ainfo); err != nil {
 			return 0, nil, nil, xerrors.Errorf("unmarshaling account meta: %w", err)
@@ -162,25 +169,30 @@ func SetupInitActor(ctx context.Context, bs bstore.Blockstore, netname string, i
 		}
 	}
 
+	// 获取地址映射的root 的 CID
 	amapaddr, err := amap.Root()
 	if err != nil {
 		return 0, nil, nil, err
 	}
 
+	// 保存 AddressMap 的 CId 到 InitActor.AddressMap
 	if err = ist.SetAddressMap(amapaddr); err != nil {
 		return 0, nil, nil, err
 	}
 
+	// 持久化 InitActor 的 State 到数据库中， 并返回CID
 	statecid, err := cst.Put(ctx, ist.GetState())
 	if err != nil {
 		return 0, nil, nil, err
 	}
 
+	// 获取 InitActor 的
 	actcid, err := init_.GetActorCodeID(av)
 	if err != nil {
 		return 0, nil, nil, err
 	}
 
+	// 返回 types.Actor
 	act := &types.Actor{
 		Code: actcid,
 		Head: statecid,

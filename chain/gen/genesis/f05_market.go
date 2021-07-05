@@ -13,6 +13,7 @@ import (
 	"github.com/filecoin-project/lotus/chain/types"
 )
 
+//SetupStorageMarketActor 创建StorageMarketActor
 func SetupStorageMarketActor(ctx context.Context, bs bstore.Blockstore, av actors.Version) (*types.Actor, error) {
 	cst := cbor.NewCborStore(bs)
 	mst, err := market.MakeState(adt.WrapStore(ctx, cbor.NewCborStore(bs)), av)

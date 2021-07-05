@@ -166,10 +166,13 @@ func MakeInitialStateTree(ctx context.Context, bs bstore.Blockstore, template ge
 	}
 
 	// Create init actor
+	// 创建 InitActor 并田间各种账户地址
 	idStart, initact, keyIDs, err := SetupInitActor(ctx, bs, template.NetworkName, template.Accounts, template.VerifregRootKey, template.RemainderAccount, av)
 	if err != nil {
 		return nil, nil, xerrors.Errorf("setup init actor: %w", err)
 	}
+
+	// 添加 type.Actor 类型的 InitActor 到状态树
 	if err := state.SetActor(init_.Address, initact); err != nil {
 		return nil, nil, xerrors.Errorf("set init actor: %w", err)
 	}
@@ -181,16 +184,20 @@ func MakeInitialStateTree(ctx context.Context, bs bstore.Blockstore, template ge
 		return nil, nil, xerrors.Errorf("setup reward actor: %w", err)
 	}
 
+	//添加 RewardActor 到状态树中
 	err = state.SetActor(reward.Address, rewact)
 	if err != nil {
 		return nil, nil, xerrors.Errorf("set reward actor: %w", err)
 	}
 
 	// Setup cron
+	//创建 CronActor
 	cronact, err := SetupCronActor(ctx, bs, av)
 	if err != nil {
 		return nil, nil, xerrors.Errorf("setup cron actor: %w", err)
 	}
+
+	//添加CronActor 到状态树中
 	if err := state.SetActor(cron.Address, cronact); err != nil {
 		return nil, nil, xerrors.Errorf("set cron actor: %w", err)
 	}
@@ -200,6 +207,8 @@ func MakeInitialStateTree(ctx context.Context, bs bstore.Blockstore, template ge
 	if err != nil {
 		return nil, nil, xerrors.Errorf("setup storage power actor: %w", err)
 	}
+
+	// 添加 StoragePower Actor 到状态树中
 	if err := state.SetActor(power.Address, spact); err != nil {
 		return nil, nil, xerrors.Errorf("set storage power actor: %w", err)
 	}
@@ -209,6 +218,7 @@ func MakeInitialStateTree(ctx context.Context, bs bstore.Blockstore, template ge
 	if err != nil {
 		return nil, nil, xerrors.Errorf("setup storage market actor: %w", err)
 	}
+	// 添加 MarketActor 到状态树中
 	if err := state.SetActor(market.Address, marketact); err != nil {
 		return nil, nil, xerrors.Errorf("set storage market actor: %w", err)
 	}
@@ -222,6 +232,7 @@ func MakeInitialStateTree(ctx context.Context, bs bstore.Blockstore, template ge
 		return nil, nil, xerrors.Errorf("set verified registry actor: %w", err)
 	}
 
+	// 用于存放燃烧掉fil 的地址
 	bact, err := makeAccountActor(ctx, cst, av, builtin.BurntFundsActorAddr, big.Zero())
 	if err != nil {
 		return nil, nil, xerrors.Errorf("setup burnt funds actor state: %w", err)
@@ -365,17 +376,21 @@ func MakeInitialStateTree(ctx context.Context, bs bstore.Blockstore, template ge
 	return state, keyIDs, nil
 }
 
+// 创建  AccountActor
 func makeAccountActor(ctx context.Context, cst cbor.IpldStore, av actors.Version, addr address.Address, bal types.BigInt) (*types.Actor, error) {
+	// 创建 AccoutActor 的State
 	ast, err := account.MakeState(adt.WrapStore(ctx, cst), av, addr)
 	if err != nil {
 		return nil, err
 	}
 
+	// 存储 State， 并返回cid
 	statecid, err := cst.Put(ctx, ast.GetState())
 	if err != nil {
 		return nil, err
 	}
 
+	// 获取 AccountActor 的 codeid
 	actcid, err := account.GetActorCodeID(av)
 	if err != nil {
 		return nil, err
@@ -390,6 +405,7 @@ func makeAccountActor(ctx context.Context, cst cbor.IpldStore, av actors.Version
 	return act, nil
 }
 
+// createAccountActor 根据创世块的 Account 信息创建Account
 func createAccountActor(ctx context.Context, cst cbor.IpldStore, state *state.StateTree, info genesis.Actor, keyIDs map[address.Address]address.Address, av actors.Version) error {
 	var ainfo genesis.AccountMeta
 	if err := json.Unmarshal(info.Meta, &ainfo); err != nil {
@@ -413,6 +429,7 @@ func createAccountActor(ctx context.Context, cst cbor.IpldStore, state *state.St
 	return nil
 }
 
+//
 func createMultisigAccount(ctx context.Context, cst cbor.IpldStore, state *state.StateTree, ida address.Address, info genesis.Actor, keyIDs map[address.Address]address.Address, av actors.Version) error {
 	if info.Type != genesis.TMultisig {
 		return fmt.Errorf("can only call createMultisigAccount with multisig Actor info")
@@ -424,6 +441,7 @@ func createMultisigAccount(ctx context.Context, cst cbor.IpldStore, state *state
 
 	var signers []address.Address
 
+	// 检查所有的多签账户
 	for _, e := range ainfo.Signers {
 		idAddress, ok := keyIDs[e]
 		if !ok {
@@ -448,21 +466,25 @@ func createMultisigAccount(ctx context.Context, cst cbor.IpldStore, state *state
 		signers = append(signers, idAddress)
 	}
 
+	// 创建multisigActor 的 State
 	mst, err := multisig.MakeState(adt.WrapStore(ctx, cst), av, signers, uint64(ainfo.Threshold), abi.ChainEpoch(ainfo.VestingStart), abi.ChainEpoch(ainfo.VestingDuration), info.Balance)
 	if err != nil {
 		return err
 	}
 
+	// 持久化State， 并返回statecid
 	statecid, err := cst.Put(ctx, mst.GetState())
 	if err != nil {
 		return err
 	}
 
+	// 获取 multisigActor 的codeid
 	actcid, err := multisig.GetActorCodeID(av)
 	if err != nil {
 		return err
 	}
 
+	// 保存actor
 	err = state.SetActor(ida, &types.Actor{
 		Code:    actcid,
 		Balance: info.Balance,
@@ -654,7 +676,6 @@ func MakeGenesisBlock(ctx context.Context, j journal.Journal, bs bstore.Blocksto
 		return nil, xerrors.Errorf("serializing block header failed: %w", err)
 	}
 
-	if err := bs.Put(sb); err != nil {
 		return nil, xerrors.Errorf("putting header to blockstore: %w", err)
 	}
 

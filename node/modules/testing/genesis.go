@@ -76,6 +76,7 @@ func MakeGenesis(outFile, genesisTemplate string) func(bs dtypes.ChainBlockstore
 				template.Timestamp = uint64(build.Clock.Now().Unix())
 			}
 
+			//创建创世块
 			b, err := genesis2.MakeGenesisBlock(context.TODO(), j, bs, syscalls, template)
 			if err != nil {
 				return nil, xerrors.Errorf("make genesis block: %w", err)

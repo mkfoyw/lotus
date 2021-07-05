@@ -109,6 +109,7 @@ func (s *state5) SetAddressMap(mcid cid.Cid) error {
 	return nil
 }
 
+// 根据 InitActor 的 AddressMap 的CID 加载 HAMT 树
 func (s *state5) AddressMap() (adt.Map, error) {
 	return adt5.AsMap(s.store, s.State.AddressMap, builtin5.DefaultHamtBitwidth)
 }

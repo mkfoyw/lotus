@@ -19,6 +19,7 @@ func load5(store adt.Store, root cid.Cid) (State, error) {
 	return &out, nil
 }
 
+// 创建v5 CronActor
 func make5(store adt.Store) (State, error) {
 	out := state5{store: store}
 	out.State = *cron5.ConstructState(cron5.BuiltInEntries())

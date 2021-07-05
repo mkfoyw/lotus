@@ -76,6 +76,7 @@ func Load(store adt.Store, act *types.Actor) (State, error) {
 	return nil, xerrors.Errorf("unknown actor code %s", act.Code)
 }
 
+// 创建 StoragePowerActor 的State
 func MakeState(store adt.Store, av actors.Version) (State, error) {
 	switch av {
 
