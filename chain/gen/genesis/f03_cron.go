@@ -3,6 +3,7 @@ package genesis
 import (
 	"context"
 
+	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/lotus/chain/actors"
 	"github.com/filecoin-project/lotus/chain/actors/adt"
 	"github.com/filecoin-project/lotus/chain/actors/builtin/cron"
@@ -37,8 +38,9 @@ func SetupCronActor(ctx context.Context, bs bstore.Blockstore, av actors.Version
 
 	// 创建 types.Actor
 	act := &types.Actor{
-		Code: actcid,
-		Head: statecid,
+		Code:    actcid,
+		Head:    statecid,
+		Balance: big.Zero(),
 	}
 
 	return act, nil

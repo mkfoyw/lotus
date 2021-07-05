@@ -434,7 +434,7 @@ jobs:
           name: prepare workspace
           command: |
             mkdir appimage
-            mv Lotus-latest-x86_64.AppImage appimage
+            mv Lotus-*.AppImage appimage
       - persist_to_workspace:
           root: "."
           paths:
@@ -772,6 +772,31 @@ workflows:
           target: "./itests/deadlines_test.go"
       
       - test:
+          name: test-itest-deals_concurrent
+          suite: itest-deals_concurrent
+          target: "./itests/deals_concurrent_test.go"
+      
+      - test:
+          name: test-itest-deals_offline
+          suite: itest-deals_offline
+          target: "./itests/deals_offline_test.go"
+      
+      - test:
+          name: test-itest-deals_power
+          suite: itest-deals_power
+          target: "./itests/deals_power_test.go"
+      
+      - test:
+          name: test-itest-deals_pricing
+          suite: itest-deals_pricing
+          target: "./itests/deals_pricing_test.go"
+      
+      - test:
+          name: test-itest-deals_publish
+          suite: itest-deals_publish
+          target: "./itests/deals_publish_test.go"
+      
+      - test:
           name: test-itest-deals
           suite: itest-deals
           target: "./itests/deals_test.go"
@@ -787,6 +812,11 @@ workflows:
           target: "./itests/multisig_test.go"
       
       - test:
+          name: test-itest-nonce
+          suite: itest-nonce
+          target: "./itests/nonce_test.go"
+      
+      - test:
           name: test-itest-paych_api
           suite: itest-paych_api
           target: "./itests/paych_api_test.go"
@@ -800,6 +830,11 @@ workflows:
           name: test-itest-sdr_upgrade
           suite: itest-sdr_upgrade
           target: "./itests/sdr_upgrade_test.go"
+      
+      - test:
+          name: test-itest-sector_finalize_early
+          suite: itest-sector_finalize_early
+          target: "./itests/sector_finalize_early_test.go"
       
       - test:
           name: test-itest-sector_pledge

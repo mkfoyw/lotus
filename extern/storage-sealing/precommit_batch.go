@@ -96,6 +96,7 @@ func (b *PreCommitBatcher) run() {
 		panic(err)
 	}
 
+	timer := time.NewTimer(b.batchWait(cfg.PreCommitBatchWait, cfg.PreCommitBatchSlack))
 	for {
 		if forceRes != nil {
 			forceRes <- lastRes
@@ -103,7 +104,7 @@ func (b *PreCommitBatcher) run() {
 		}
 		lastRes = nil
 
-		var sendAboveMax, sendAboveMin bool
+		var sendAboveMax bool
 		select {
 		case <-b.stop:
 			close(b.stopped)
@@ -111,22 +112,31 @@ func (b *PreCommitBatcher) run() {
 		case <-b.notify:
 			// 表示有新的 PreCommit 消息提交
 			sendAboveMax = true
-		case <-b.batchWait(cfg.PreCommitBatchWait, cfg.PreCommitBatchSlack):
-			sendAboveMin = true
+		case <-timer.C:
+			// do nothing
 		case fr := <-b.force: // user triggered
 			forceRes = fr
 		}
 
 		var err error
-		lastRes, err = b.maybeStartBatch(sendAboveMax, sendAboveMin)
+		lastRes, err = b.maybeStartBatch(sendAboveMax)
 		if err != nil {
 			log.Warnw("PreCommitBatcher processBatch error", "error", err)
 		}
+
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+
+		timer.Reset(b.batchWait(cfg.PreCommitBatchWait, cfg.PreCommitBatchSlack))
 	}
 }
 
 // batchWait 返回我们下次提交需要等待的时间
-func (b *PreCommitBatcher) batchWait(maxWait, slack time.Duration) <-chan time.Time {
+func (b *PreCommitBatcher) batchWait(maxWait, slack time.Duration) time.Duration {
 	now := time.Now()
 
 	b.lk.Lock()
@@ -134,7 +144,7 @@ func (b *PreCommitBatcher) batchWait(maxWait, slack time.Duration) <-chan time.T
 
 	// 没有扇区 需要去提交
 	if len(b.todo) == 0 {
-		return nil
+		return maxWait
 	}
 
 	// 最晚必须要批量提交 PreCommit 消息的时间
@@ -153,12 +163,12 @@ func (b *PreCommitBatcher) batchWait(maxWait, slack time.Duration) <-chan time.T
 	}
 
 	if cutoff.IsZero() {
-		return time.After(maxWait)
+		return maxWait
 	}
 
 	cutoff = cutoff.Add(-slack)
 	if cutoff.Before(now) {
-		return time.After(time.Nanosecond) // can't return 0
+		return time.Nanosecond // can't return 0
 	}
 
 	wait := cutoff.Sub(now)
@@ -166,7 +176,7 @@ func (b *PreCommitBatcher) batchWait(maxWait, slack time.Duration) <-chan time.T
 		wait = maxWait
 	}
 
-	return time.After(wait)
+	return wait
 }
 
 // maybeStartBatch 判断是否开始打包 PreCommit 信息
@@ -175,7 +185,7 @@ func (b *PreCommitBatcher) batchWait(maxWait, slack time.Duration) <-chan time.T
 //     after: 当前已经达到某些 PreCommit 最长等待时间， 此时必须去打包。
 //返回参数：
 //	  批量提交扇区的结果， 以及 error
-func (b *PreCommitBatcher) maybeStartBatch(notif, after bool) ([]sealiface.PreCommitBatchRes, error) {
+func (b *PreCommitBatcher) maybeStartBatch(notif bool) ([]sealiface.PreCommitBatchRes, error) {
 	b.lk.Lock()
 	defer b.lk.Unlock()
 
@@ -192,11 +202,6 @@ func (b *PreCommitBatcher) maybeStartBatch(notif, after bool) ([]sealiface.PreCo
 
 	// 当前等待打包的数量小于我们期望提交的 PreCommit 数量
 	if notif && total < cfg.MaxPreCommitBatch {
-		return nil, nil
-	}
-
-	// 当前等待打包的PreCommit 信息小于我们想要批量提交的PreCommit 最小数量是否不要进行打包。
-	if after && total < cfg.MinPreCommitBatch {
 		return nil, nil
 	}
 

@@ -32,6 +32,9 @@ import (
 
 const arp = abi.RegisteredAggregationProof_SnarkPackV1
 
+var aggFeeNum = big.NewInt(110)
+var aggFeeDen = big.NewInt(100)
+
 //go:generate go run github.com/golang/mock/mockgen -destination=mocks/mock_commit_batcher.go -package=mocks . CommitBatcherApi
 
 type CommitBatcherApi interface {
@@ -103,6 +106,7 @@ func (b *CommitBatcher) run() {
 		panic(err)
 	}
 
+	timer := time.NewTimer(b.batchWait(cfg.CommitBatchWait, cfg.CommitBatchSlack))
 	for {
 		if forceRes != nil {
 			forceRes <- lastMsg
@@ -110,36 +114,46 @@ func (b *CommitBatcher) run() {
 		}
 		lastMsg = nil
 
-		var sendAboveMax, sendAboveMin bool
+		// indicates whether we should only start a batch if we have reached or exceeded cfg.MaxCommitBatch
+		var sendAboveMax bool
 		select {
 		case <-b.stop:
 			close(b.stopped)
 			return
 		case <-b.notify:
 			sendAboveMax = true
-		case <-b.batchWait(cfg.CommitBatchWait, cfg.CommitBatchSlack):
-			sendAboveMin = true
+		case <-timer.C:
+			// do nothing
 		case fr := <-b.force: // user triggered
 			forceRes = fr
 		}
 
 		var err error
-		lastMsg, err = b.maybeStartBatch(sendAboveMax, sendAboveMin)
+		lastMsg, err = b.maybeStartBatch(sendAboveMax)
 		if err != nil {
 			log.Warnw("CommitBatcher processBatch error", "error", err)
 		}
+
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+
+		timer.Reset(b.batchWait(cfg.CommitBatchWait, cfg.CommitBatchSlack))
 	}
 }
 
 // batchWait 返回最晚需要打包进行批量提交的时间
-func (b *CommitBatcher) batchWait(maxWait, slack time.Duration) <-chan time.Time {
+func (b *CommitBatcher) batchWait(maxWait, slack time.Duration) time.Duration {
 	now := time.Now()
 
 	b.lk.Lock()
 	defer b.lk.Unlock()
 
 	if len(b.todo) == 0 {
-		return nil
+		return maxWait
 	}
 
 	var cutoff time.Time
@@ -157,12 +171,12 @@ func (b *CommitBatcher) batchWait(maxWait, slack time.Duration) <-chan time.Time
 	}
 
 	if cutoff.IsZero() {
-		return time.After(maxWait)
+		return maxWait
 	}
 
 	cutoff = cutoff.Add(-slack)
 	if cutoff.Before(now) {
-		return time.After(time.Nanosecond) // can't return 0
+		return time.Nanosecond // can't return 0
 	}
 
 	wait := cutoff.Sub(now)
@@ -170,10 +184,10 @@ func (b *CommitBatcher) batchWait(maxWait, slack time.Duration) <-chan time.Time
 		wait = maxWait
 	}
 
-	return time.After(wait)
+	return wait
 }
 
-func (b *CommitBatcher) maybeStartBatch(notif, after bool) ([]sealiface.CommitBatchRes, error) {
+func (b *CommitBatcher) maybeStartBatch(notif bool) ([]sealiface.CommitBatchRes, error) {
 	b.lk.Lock()
 	defer b.lk.Unlock()
 
@@ -191,13 +205,27 @@ func (b *CommitBatcher) maybeStartBatch(notif, after bool) ([]sealiface.CommitBa
 		return nil, nil
 	}
 
-	if after && total < cfg.MinCommitBatch {
-		return nil, nil
-	}
-
 	var res []sealiface.CommitBatchRes
 
-	if total < cfg.MinCommitBatch || total < miner5.MinAggregatedSectors {
+	individual := (total < cfg.MinCommitBatch) || (total < miner5.MinAggregatedSectors)
+
+	if !individual && !cfg.AggregateAboveBaseFee.Equals(big.Zero()) {
+		tok, _, err := b.api.ChainHead(b.mctx)
+		if err != nil {
+			return nil, err
+		}
+
+		bf, err := b.api.ChainBaseFee(b.mctx, tok)
+		if err != nil {
+			return nil, xerrors.Errorf("couldn't get base fee: %w", err)
+		}
+
+		if bf.LessThan(cfg.AggregateAboveBaseFee) {
+			individual = true
+		}
+	}
+
+	if individual {
 		res, err = b.processIndividually()
 	} else {
 		res, err = b.processBatch(cfg)
@@ -234,7 +262,9 @@ func (b *CommitBatcher) processBatch(cfg sealiface.Config) ([]sealiface.CommitBa
 
 	total := len(b.todo)
 
-	var res sealiface.CommitBatchRes
+	res := sealiface.CommitBatchRes{
+		FailedSectors: map[abi.SectorNumber]string{},
+	}
 
 	params := miner5.ProveCommitAggregateParams{
 		SectorNumbers: bitfield.New(),
@@ -310,16 +340,18 @@ func (b *CommitBatcher) processBatch(cfg sealiface.Config) ([]sealiface.CommitBa
 		return []sealiface.CommitBatchRes{res}, xerrors.Errorf("getting network version: %s", err)
 	}
 
-	aggFee := policy.AggregateNetworkFee(nv, len(infos), bf)
+	aggFee := big.Div(big.Mul(policy.AggregateNetworkFee(nv, len(infos), bf), aggFeeNum), aggFeeDen)
 
-	goodFunds := big.Add(maxFee, big.Add(collateral, aggFee))
+	needFunds := big.Add(collateral, aggFee)
 
-	from, _, err := b.addrSel(b.mctx, mi, api.CommitAddr, goodFunds, collateral)
+	goodFunds := big.Add(maxFee, needFunds)
+
+	from, _, err := b.addrSel(b.mctx, mi, api.CommitAddr, goodFunds, needFunds)
 	if err != nil {
 		return []sealiface.CommitBatchRes{res}, xerrors.Errorf("no good address found: %w", err)
 	}
 
-	mcid, err := b.api.SendMsg(b.mctx, from, b.maddr, miner.Methods.ProveCommitAggregate, collateral, maxFee, enc.Bytes())
+	mcid, err := b.api.SendMsg(b.mctx, from, b.maddr, miner.Methods.ProveCommitAggregate, needFunds, maxFee, enc.Bytes())
 	if err != nil {
 		return []sealiface.CommitBatchRes{res}, xerrors.Errorf("sending message failed: %w", err)
 	}
@@ -347,7 +379,8 @@ func (b *CommitBatcher) processIndividually() ([]sealiface.CommitBatchRes, error
 
 	for sn, info := range b.todo {
 		r := sealiface.CommitBatchRes{
-			Sectors: []abi.SectorNumber{sn},
+			Sectors:       []abi.SectorNumber{sn},
+			FailedSectors: map[abi.SectorNumber]string{},
 		}
 
 		mcid, err := b.processSingle(mi, sn, info, tok)

@@ -66,6 +66,8 @@ type DealmakingConfig struct {
 	ConsiderUnverifiedStorageDeals bool
 	PieceCidBlocklist              []cid.Cid
 	ExpectedSealDuration           Duration
+	// Maximum amount of time proposed deal StartEpoch can be in future
+	MaxDealStartDelay Duration
 	// The amount of time to wait for more deals to arrive before
 	// publishing
 	PublishMsgPeriod Duration
@@ -75,6 +77,9 @@ type DealmakingConfig struct {
 	// The maximum collateral that the provider will put up against a deal,
 	// as a multiplier of the minimum collateral bound
 	MaxProviderCollateralMultiplier uint64
+
+	// The maximum number of parallel online data transfers (storage+retrieval)
+	SimultaneousTransfers uint64
 
 	Filter          string
 	RetrievalFilter string
@@ -124,7 +129,6 @@ type SealingConfig struct {
 	BatchPreCommits bool
 	// maximum precommit batch size - batches will be sent immediately above this size
 	MaxPreCommitBatch int
-	MinPreCommitBatch int
 	// how long to wait before submitting a batch after crossing the minimum batch size
 	PreCommitBatchWait Duration
 	// time buffer for forceful batch submission before sectors/deal in batch would start expiring
@@ -139,6 +143,10 @@ type SealingConfig struct {
 	CommitBatchWait Duration
 	// time buffer for forceful batch submission before sectors/deals in batch would start expiring
 	CommitBatchSlack Duration
+
+	// network BaseFee below which to stop doing commit aggregation, instead
+	// submitting proofs to the chain individually
+	AggregateAboveBaseFee types.FIL
 
 	TerminateBatchMax  uint64
 	TerminateBatchMin  uint64
@@ -317,7 +325,6 @@ func DefaultStorageMiner() *StorageMiner {
 			FinalizeEarly:             false,
 
 			BatchPreCommits:     true,
-			MinPreCommitBatch:   1,                                  // we must have at least one precommit to batch
 			MaxPreCommitBatch:   miner5.PreCommitSectorBatchMaxSize, // up to 256 sectors
 			PreCommitBatchWait:  Duration(24 * time.Hour),           // this should be less than 31.5 hours, which is the expiration of a precommit ticket
 			PreCommitBatchSlack: Duration(3 * time.Hour),            // time buffer for forceful batch submission before sectors/deals in batch would start expiring, higher value will lower the chances for message fail due to expiration
@@ -327,6 +334,8 @@ func DefaultStorageMiner() *StorageMiner {
 			MaxCommitBatch:   miner5.MaxAggregatedSectors, // maximum 819 sectors, this is the maximum aggregation per FIP13
 			CommitBatchWait:  Duration(24 * time.Hour),    // this can be up to 30 days
 			CommitBatchSlack: Duration(1 * time.Hour),     // time buffer for forceful batch submission before sectors/deals in batch would start expiring, higher value will lower the chances for message fail due to expiration
+
+			AggregateAboveBaseFee: types.FIL(types.BigMul(types.PicoFil, types.NewInt(150))), // 0.15 nFIL
 
 			TerminateBatchMin:  1,
 			TerminateBatchMax:  100,
@@ -357,10 +366,13 @@ func DefaultStorageMiner() *StorageMiner {
 			ConsiderUnverifiedStorageDeals: true,
 			PieceCidBlocklist:              []cid.Cid{},
 			// TODO: It'd be nice to set this based on sector size
+			MaxDealStartDelay:               Duration(time.Hour * 24 * 14),
 			ExpectedSealDuration:            Duration(time.Hour * 24),
 			PublishMsgPeriod:                Duration(time.Hour),
 			MaxDealsPerPublishMsg:           8,
 			MaxProviderCollateralMultiplier: 2,
+
+			SimultaneousTransfers: DefaultSimultaneousTransfers,
 
 			RetrievalPricing: &RetrievalPricing{
 				Strategy: RetrievalPricingDefaultMode,
