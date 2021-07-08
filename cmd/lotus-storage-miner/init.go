@@ -126,17 +126,20 @@ var initCmd = &cli.Command{
 	Action: func(cctx *cli.Context) error {
 		log.Info("Initializing lotus miner")
 
+		// 设置 Miner 扇区大小
 		sectorSizeInt, err := units.RAMInBytes(cctx.String("sector-size"))
 		if err != nil {
 			return err
 		}
 		ssize := abi.SectorSize(sectorSizeInt)
 
+		// 设置 打包消息的消费
 		gasPrice, err := types.BigFromString(cctx.String("gas-premium"))
 		if err != nil {
 			return xerrors.Errorf("failed to parse gas-price flag: %s", err)
 		}
 
+		// 是否通过链接导入扇区
 		symlink := cctx.Bool("symlink-imported-sectors")
 		if symlink {
 			log.Info("will attempt to symlink to imported sectors")
@@ -145,7 +148,7 @@ var initCmd = &cli.Command{
 		ctx := lcli.ReqContext(cctx)
 
 		log.Info("Checking proof parameters")
-
+		//获取 miner 的证明参数
 		if err := paramfetch.GetParams(ctx, build.ParametersJSON(), build.SrsJSON(), uint64(ssize)); err != nil {
 			return xerrors.Errorf("fetching proof parameters: %w", err)
 		}
@@ -164,6 +167,7 @@ var initCmd = &cli.Command{
 
 		log.Info("Checking full node sync status")
 
+		// 是否等待 FullNode 同步完成
 		if !cctx.Bool("genesis-miner") && !cctx.Bool("nosync") {
 			if err := lcli.SyncWait(ctx, &v0api.WrapperV1Full{FullNode: api}, false); err != nil {
 				return xerrors.Errorf("sync wait: %w", err)
@@ -172,6 +176,7 @@ var initCmd = &cli.Command{
 
 		log.Info("Checking if repo exists")
 
+		// 获取 MinerRepo
 		repoPath := cctx.String(FlagMinerRepo)
 		r, err := repo.NewFS(repoPath)
 		if err != nil {
@@ -211,6 +216,7 @@ var initCmd = &cli.Command{
 
 			var localPaths []stores.LocalPath
 
+			// 添加创世矿工预先密封的扇区
 			if pssb := cctx.StringSlice("pre-sealed-sectors"); len(pssb) != 0 {
 				log.Infof("Setting up storage config with presealed sectors: %v", pssb)
 
@@ -225,6 +231,7 @@ var initCmd = &cli.Command{
 				}
 			}
 
+			// 添加默认的扇区存储仓库
 			if !cctx.Bool("no-local-storage") {
 				b, err := json.MarshalIndent(&stores.LocalStorageMeta{
 					ID:       stores.ID(uuid.New().String()),
@@ -412,8 +419,8 @@ func storageMinerInit(ctx context.Context, cctx *cli.Context, api v1api.FullNode
 	}
 	defer lr.Close() //nolint:errcheck
 
+	// 生成 lipp2p 的身份ID
 	log.Info("Initializing libp2p identity")
-
 	p2pSk, err := makeHostKey(lr)
 	if err != nil {
 		return xerrors.Errorf("make host key: %w", err)
@@ -424,6 +431,7 @@ func storageMinerInit(ctx context.Context, cctx *cli.Context, api v1api.FullNode
 		return xerrors.Errorf("peer ID from private key: %w", err)
 	}
 
+	// 获取元数据数据库
 	mds, err := lr.Datastore(context.TODO(), "/metadata")
 	if err != nil {
 		return err
@@ -616,9 +624,12 @@ func configureStorageMiner(ctx context.Context, api v1api.FullNode, addr address
 	return nil
 }
 
+// createStorageMiner 创建miner
 func createStorageMiner(ctx context.Context, api v1api.FullNode, peerid peer.ID, gasPrice types.BigInt, cctx *cli.Context) (address.Address, error) {
 	var err error
 	var owner address.Address
+
+	// 获取 Miner 的owner 的地址
 	if cctx.String("owner") != "" {
 		owner, err = address.NewFromString(cctx.String("owner"))
 	} else {
@@ -633,6 +644,7 @@ func createStorageMiner(ctx context.Context, api v1api.FullNode, peerid peer.ID,
 		return address.Undef, fmt.Errorf("failed to parse sector size: %w", err)
 	}
 
+	// 获取 Miner 的worker 地址
 	worker := owner
 	if cctx.String("worker") != "" {
 		worker, err = address.NewFromString(cctx.String("worker"))
@@ -644,6 +656,7 @@ func createStorageMiner(ctx context.Context, api v1api.FullNode, peerid peer.ID,
 	}
 
 	// make sure the worker account exists on chain
+	// 确定 worker的 ID 地址存在。
 	_, err = api.StateLookupID(ctx, worker, types.EmptyTSK)
 	if err != nil {
 		signed, err := api.MpoolPushMessage(ctx, &types.Message{

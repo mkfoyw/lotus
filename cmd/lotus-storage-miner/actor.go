@@ -200,6 +200,7 @@ var actorSetPeeridCmd = &cli.Command{
 	},
 }
 
+// 从 Miner的Owner 发送 fil 到
 var actorWithdrawCmd = &cli.Command{
 	Name:      "withdraw",
 	Usage:     "withdraw available balance",
@@ -219,6 +220,7 @@ var actorWithdrawCmd = &cli.Command{
 
 		ctx := lcli.ReqContext(cctx)
 
+		// 获取 Miner的 ID 地址
 		maddr, err := nodeApi.ActorAddress(ctx)
 		if err != nil {
 			return err

@@ -138,6 +138,8 @@ func (a *MpoolAPI) MpoolPushMessage(ctx context.Context, msg *types.Message, spe
 	cp := *msg
 	msg = &cp
 	inMsg := *msg
+
+	// 获取 From 地址的 ID 地址
 	fromA, err := a.Stmgr.ResolveToKeyAddress(ctx, msg.From, nil)
 	if err != nil {
 		return nil, xerrors.Errorf("getting key address: %w", err)
