@@ -317,6 +317,7 @@ var DaemonCmd = &cli.Command{
 			log.Warnf("unable to inject prometheus ipfs/go-metrics exporter; some metrics will be unavailable; err: %s", err)
 		}
 
+		// 创建 FullNode 结构体， 并采用依赖注入的方式填充我们的FullNode结构体的各个字段
 		var api api.FullNode
 		stop, err := node.New(ctx,
 			node.FullAPI(&api, node.Lite(isLite)),
@@ -354,6 +355,7 @@ var DaemonCmd = &cli.Command{
 			}
 		}
 
+		// 返回 FullNode 监听的通信端点
 		endpoint, err := r.APIEndpoint()
 		if err != nil {
 			return xerrors.Errorf("getting api endpoint: %w", err)
@@ -364,28 +366,33 @@ var DaemonCmd = &cli.Command{
 		// ----
 
 		// Populate JSON-RPC options.
+		// 填充 JSON-RPC 配置选项
 		serverOptions := make([]jsonrpc.ServerOption, 0)
 		if maxRequestSize := cctx.Int("api-max-req-size"); maxRequestSize != 0 {
 			serverOptions = append(serverOptions, jsonrpc.WithMaxRequestSize(int64(maxRequestSize)))
 		}
 
 		// Instantiate the full node handler.
+		// 创建 fullnode 的jsonrpc handler
 		h, err := node.FullNodeHandler(api, true, serverOptions...)
 		if err != nil {
 			return fmt.Errorf("failed to instantiate rpc handler: %s", err)
 		}
 
 		// Serve the RPC.
+		// 开启启动我们的 RPC  server
 		rpcStopper, err := node.ServeRPC(h, "lotus-daemon", endpoint)
 		if err != nil {
 			return fmt.Errorf("failed to start json-rpc endpoint: %s", err)
 		}
 
 		// Monitor for shutdown.
+		// 监听我们程序的退出信号
 		finishCh := node.MonitorShutdown(shutdownChan,
 			node.ShutdownHandler{Component: "rpc server", StopFunc: rpcStopper},
 			node.ShutdownHandler{Component: "node", StopFunc: stop},
 		)
+		// 程序已经完全退出了
 		<-finishCh // fires when shutdown is complete.
 
 		// TODO: properly parse api endpoint (or make it a URL)
