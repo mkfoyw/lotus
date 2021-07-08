@@ -720,7 +720,7 @@ func (a *StateAPI) StateChangedActors(ctx context.Context, old cid.Cid, new cid.
 		return nil, xerrors.Errorf("failed to load new state tree: %w", err)
 	}
 
-	return state.Diff(oldTree, newTree)
+	return state.Diff(ctx, oldTree, newTree)
 }
 
 func (a *StateAPI) StateMinerSectorCount(ctx context.Context, addr address.Address, tsk types.TipSetKey) (api.MinerSectors, error) {
