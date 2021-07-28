@@ -26,13 +26,16 @@ func GenerateKey(typ types.KeyType) (*Key, error) {
 	return NewKey(ki)
 }
 
+// 保存密钥的相关信息的。
+
 type Key struct {
-	types.KeyInfo
+	types.KeyInfo // 包含密钥的类型和私钥
 
 	PublicKey []byte
 	Address   address.Address
 }
 
+// NewKey 根据 KeyInfo 创建 Key， key 保存了 keyInfo 更多信息。
 func NewKey(keyinfo types.KeyInfo) (*Key, error) {
 	k := &Key{
 		KeyInfo: keyinfo,

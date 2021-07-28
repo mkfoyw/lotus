@@ -1218,6 +1218,7 @@ type Repo struct {
 	blocklist               []address.Address
 }
 
+// NewRepo 创建一个 repo
 func NewRepo(path string) (*Repo, error) {
 	path, err := homedir.Expand(path)
 	if err != nil {
@@ -1231,6 +1232,7 @@ func NewRepo(path string) (*Repo, error) {
 	}, nil
 }
 
+// exists 判断仓库路径是否存在
 func (r *Repo) exists() (bool, error) {
 	_, err := os.Stat(r.path)
 	notexist := os.IsNotExist(err)
@@ -1241,6 +1243,7 @@ func (r *Repo) exists() (bool, error) {
 
 }
 
+// init  创建仓库路径
 func (r *Repo) init() error {
 	exist, err := r.exists()
 	if err != nil {

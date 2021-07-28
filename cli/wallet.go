@@ -21,6 +21,8 @@ import (
 	"github.com/filecoin-project/lotus/lib/tablewriter"
 )
 
+var WalletCmd = walletCmd
+
 var walletCmd = &cli.Command{
 	Name:  "wallet",
 	Usage: "Manage wallet",

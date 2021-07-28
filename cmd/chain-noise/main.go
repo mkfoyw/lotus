@@ -16,6 +16,8 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+// 产生一些垃圾交易发送到网路中
+
 func main() {
 	app := &cli.App{
 		Name:  "chain-noise",

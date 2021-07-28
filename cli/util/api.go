@@ -82,9 +82,11 @@ func envForRepoDeprecation(t repo.RepoType) string {
 	}
 }
 
+// GetAPIInfo 获取 APIInfo
 func GetAPIInfo(ctx *cli.Context, t repo.RepoType) (APIInfo, error) {
 	// Check if there was a flag passed with the listen address of the API
 	// server (only used by the tests)
+	//从命令行参数获取 API 相关的信息
 	apiFlag := flagForAPI(t)
 	if ctx.IsSet(apiFlag) {
 		strma := ctx.String(apiFlag)
@@ -93,6 +95,7 @@ func GetAPIInfo(ctx *cli.Context, t repo.RepoType) (APIInfo, error) {
 		return APIInfo{Addr: strma}, nil
 	}
 
+	//从环境变量中获取 API 相关的信息
 	envKey := EnvForRepo(t)
 	env, ok := os.LookupEnv(envKey)
 	if !ok {
@@ -107,8 +110,8 @@ func GetAPIInfo(ctx *cli.Context, t repo.RepoType) (APIInfo, error) {
 		return ParseApiInfo(env), nil
 	}
 
+	// 从 repo 中获取APi 相关信息
 	repoFlag := flagForRepo(t)
-
 	p, err := homedir.Expand(ctx.String(repoFlag))
 	if err != nil {
 		return APIInfo{}, xerrors.Errorf("could not expand home dir (%s): %w", repoFlag, err)

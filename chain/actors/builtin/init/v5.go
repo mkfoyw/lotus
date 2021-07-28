@@ -18,7 +18,6 @@ import (
 
 var _ State = (*state5)(nil)
 
-// load5 加载 V5的 InitActor
 func load5(store adt.Store, root cid.Cid) (State, error) {
 	out := state5{store: store}
 	err := store.Get(store.Context(), root, &out)
@@ -28,11 +27,9 @@ func load5(store adt.Store, root cid.Cid) (State, error) {
 	return &out, nil
 }
 
-// make5 创建 V5的 InitActor
 func make5(store adt.Store, networkName string) (State, error) {
 	out := state5{store: store}
 
-	// 构造 InitActor 的State： 主要包括创建地址到ID地址的映射， 设置下一个非单例actor的ID
 	s, err := init5.ConstructState(store, networkName)
 	if err != nil {
 		return nil, err
@@ -43,7 +40,6 @@ func make5(store adt.Store, networkName string) (State, error) {
 	return &out, nil
 }
 
-// state5 用于封装 InitActor 的State
 type state5 struct {
 	init5.State
 	store adt.Store
@@ -109,7 +105,6 @@ func (s *state5) SetAddressMap(mcid cid.Cid) error {
 	return nil
 }
 
-// 根据 InitActor 的 AddressMap 的CID 加载 HAMT 树
 func (s *state5) AddressMap() (adt.Map, error) {
 	return adt5.AsMap(s.store, s.State.AddressMap, builtin5.DefaultHamtBitwidth)
 }

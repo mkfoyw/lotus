@@ -583,7 +583,9 @@ func (fsr *fsLockedRepo) put(rawName string, info types.KeyInfo, retries int) er
 		name = fmt.Sprintf("%s-%d", rawName, retries)
 	}
 
+	// 获取键值名
 	encName := base32.RawStdEncoding.EncodeToString([]byte(name))
+	// 存储keyInfo 的文件路径
 	keyPath := fsr.join(fsKeystore, encName)
 
 	_, err := os.Stat(keyPath)

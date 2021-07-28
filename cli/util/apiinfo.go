@@ -17,6 +17,7 @@ var (
 	infoWithToken = regexp.MustCompile("^[a-zA-Z0-9\\-_]+?\\.[a-zA-Z0-9\\-_]+?\\.([a-zA-Z0-9\\-_]+)?:.+$")
 )
 
+// 用于连接远程服务的相关地址信息
 type APIInfo struct {
 	Addr  string
 	Token []byte
@@ -36,6 +37,7 @@ func ParseApiInfo(s string) APIInfo {
 	}
 }
 
+// DialArgs 生成服务的 URL 地址
 func (a APIInfo) DialArgs(version string) (string, error) {
 	ma, err := multiaddr.NewMultiaddr(a.Addr)
 	if err == nil {

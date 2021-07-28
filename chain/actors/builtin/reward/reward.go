@@ -74,7 +74,6 @@ func Load(store adt.Store, act *types.Actor) (State, error) {
 	return nil, xerrors.Errorf("unknown actor code %s", act.Code)
 }
 
-// MakeState 根据不同 Actor 版本，创建对应的 RewardActor 的 State
 func MakeState(store adt.Store, av actors.Version, currRealizedPower abi.StoragePower) (State, error) {
 	switch av {
 

@@ -27,8 +27,8 @@ const (
 )
 
 type LocalWallet struct {
-	keys     map[address.Address]*Key
-	keystore types.KeyStore
+	keys     map[address.Address]*Key //在内存中缓存密钥
+	keystore types.KeyStore           // 保存在数据中的密钥
 
 	lk sync.Mutex
 }
@@ -38,6 +38,7 @@ type Default interface {
 	SetDefault(a address.Address) error
 }
 
+// 创建一个钱包
 func NewWallet(keystore types.KeyStore) (*LocalWallet, error) {
 	w := &LocalWallet{
 		keys:     make(map[address.Address]*Key),
@@ -90,16 +91,20 @@ func (w *LocalWallet) findKey(addr address.Address) (*Key, error) {
 		}
 		return nil, xerrors.Errorf("getting from keystore: %w", err)
 	}
+
+	// 通过 keyInfo 创建 key
 	k, err = NewKey(ki)
 	if err != nil {
 		return nil, xerrors.Errorf("decoding from keystore: %w", err)
 	}
+	// 在内存中保存密钥信息
 	w.keys[k.Address] = k
 	return k, nil
 }
 
 func (w *LocalWallet) tryFind(addr address.Address) (types.KeyInfo, error) {
 
+	// 获取地址的的键值
 	ki, err := w.keystore.Get(KNamePrefix + addr.String())
 	if err == nil {
 		return ki, err

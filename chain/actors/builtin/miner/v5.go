@@ -24,7 +24,6 @@ import (
 
 var _ State = (*state5)(nil)
 
-// 加载 v5 miner actor
 func load5(store adt.Store, root cid.Cid) (State, error) {
 	out := state5{store: store}
 	err := store.Get(store.Context(), root, &out)
@@ -208,7 +207,6 @@ func (s *state5) GetPrecommittedSector(num abi.SectorNumber) (*SectorPreCommitOn
 	return &ret, nil
 }
 
-// LoadSectors 获取一些扇区的在连上的消息
 func (s *state5) ForEachPrecommittedSector(cb func(SectorPreCommitOnChainInfo) error) error {
 	precommitted, err := adt5.AsMap(s.store, s.State.PreCommittedSectors, builtin5.DefaultHamtBitwidth)
 	if err != nil {
@@ -226,7 +224,6 @@ func (s *state5) ForEachPrecommittedSector(cb func(SectorPreCommitOnChainInfo) e
 }
 
 func (s *state5) LoadSectors(snos *bitfield.BitField) ([]*SectorOnChainInfo, error) {
-	// 根据这些Sectors构成的 AMT 树的CID， 加载AMT， 然后获取扇区的信息
 	sectors, err := miner5.LoadSectors(s.store, s.State.Sectors)
 	if err != nil {
 		return nil, err
@@ -278,9 +275,6 @@ func (s *state5) GetProvingPeriodStart() (abi.ChainEpoch, error) {
 	return s.State.ProvingPeriodStart, nil
 }
 
-// LoadDeadline 加载第 idx 个Deadline， 其主要分为两步：
-// 1. 加载 Deadlines 对象， 其是一个数组包含所有 Deadline 的cid
-// 2. 根据 cid 加载 指定编号的Deadline
 func (s *state5) UnallocatedSectorNumbers(count int) ([]abi.SectorNumber, error) {
 	allocatedSectors, err := s.loadAllocatedSectorNumbers()
 	if err != nil {
@@ -318,12 +312,10 @@ func (s *state5) UnallocatedSectorNumbers(count int) ([]abi.SectorNumber, error)
 }
 
 func (s *state5) LoadDeadline(idx uint64) (Deadline, error) {
-	// 加载 Deadlines
 	dls, err := s.State.LoadDeadlines(s.store)
 	if err != nil {
 		return nil, err
 	}
-	// 加载第 idx 个Deadline
 	dl, err := dls.LoadDeadline(s.store, idx)
 	if err != nil {
 		return nil, err
@@ -399,7 +391,6 @@ func (s *state5) Info() (MinerInfo, error) {
 	return mi, nil
 }
 
-// DeadlineInfo 根据当前的 Epoch 和 Miner Actor 的 State 中 ProvingPeriodStart 和 CurentDeadline 可以计算出当前的Deadline 信息
 func (s *state5) DeadlineInfo(epoch abi.ChainEpoch) (*dline.Info, error) {
 	return s.State.RecordedDeadlineInfo(epoch), nil
 }
