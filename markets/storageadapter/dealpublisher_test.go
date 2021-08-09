@@ -9,12 +9,14 @@ import (
 	"github.com/filecoin-project/go-state-types/crypto"
 	market2 "github.com/filecoin-project/specs-actors/v2/actors/builtin/market"
 	"github.com/ipfs/go-cid"
+	"github.com/raulk/clock"
 
 	"github.com/stretchr/testify/require"
 
 	tutils "github.com/filecoin-project/specs-actors/v2/support/testing"
 
 	"github.com/filecoin-project/go-address"
+	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/actors/builtin/market"
 	"github.com/filecoin-project/lotus/chain/actors/builtin/miner"
 	"github.com/filecoin-project/lotus/chain/types"
@@ -25,6 +27,11 @@ import (
 )
 
 func TestDealPublisher(t *testing.T) {
+	oldClock := build.Clock
+	t.Cleanup(func() { build.Clock = oldClock })
+	mc := clock.NewMock()
+	build.Clock = mc
+
 	testCases := []struct {
 		name                            string
 		publishPeriod                   time.Duration
@@ -91,10 +98,11 @@ func TestDealPublisher(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			mc.Set(time.Now())
 			dpapi := newDPAPI(t)
 
 			// Create a deal publisher
-			dp := newDealPublisher(dpapi, PublishMsgConfig{
+			dp := newDealPublisher(dpapi, nil, PublishMsgConfig{
 				Period:         tc.publishPeriod,
 				MaxDealsPerMsg: tc.maxDealsPerMsg,
 			}, &api.MessageSendSpec{MaxFee: abi.NewTokenAmount(1)})
@@ -115,12 +123,49 @@ func TestDealPublisher(t *testing.T) {
 			}
 
 			// Wait until publish period has elapsed
-			time.Sleep(2 * tc.publishPeriod)
+			if tc.publishPeriod > 0 {
+				// If we expect deals to get stuck in the queue, wait until that happens
+				if tc.maxDealsPerMsg != 0 && tc.dealCountWithinPublishPeriod%int(tc.maxDealsPerMsg) != 0 {
+					require.Eventually(t, func() bool {
+						dp.lk.Lock()
+						defer dp.lk.Unlock()
+						return !dp.publishPeriodStart.IsZero()
+					}, time.Second, time.Millisecond, "failed to queue deals")
+				}
+
+				// Then wait to send
+				require.Eventually(t, func() bool {
+					dp.lk.Lock()
+					defer dp.lk.Unlock()
+
+					// Advance if necessary.
+					if mc.Since(dp.publishPeriodStart) <= tc.publishPeriod {
+						dp.lk.Unlock()
+						mc.Set(dp.publishPeriodStart.Add(tc.publishPeriod + 1))
+						dp.lk.Lock()
+					}
+
+					return len(dp.pending) == 0
+				}, time.Second, time.Millisecond, "failed to send pending messages")
+			}
 
 			// Publish deals after publish period
 			for i := 0; i < tc.dealCountAfterPublishPeriod; i++ {
 				deal := publishDeal(t, dp, false, false)
 				dealsToPublish = append(dealsToPublish, deal)
+			}
+
+			if tc.publishPeriod > 0 && tc.dealCountAfterPublishPeriod > 0 {
+				require.Eventually(t, func() bool {
+					dp.lk.Lock()
+					defer dp.lk.Unlock()
+					if mc.Since(dp.publishPeriodStart) <= tc.publishPeriod {
+						dp.lk.Unlock()
+						mc.Set(dp.publishPeriodStart.Add(tc.publishPeriod + 1))
+						dp.lk.Lock()
+					}
+					return len(dp.pending) == 0
+				}, time.Second, time.Millisecond, "failed to send pending messages")
 			}
 
 			checkPublishedDeals(t, dpapi, dealsToPublish, tc.expectedDealsPerMsg)
@@ -132,9 +177,9 @@ func TestForcePublish(t *testing.T) {
 	dpapi := newDPAPI(t)
 
 	// Create a deal publisher
-	start := time.Now()
+	start := build.Clock.Now()
 	publishPeriod := time.Hour
-	dp := newDealPublisher(dpapi, PublishMsgConfig{
+	dp := newDealPublisher(dpapi, nil, PublishMsgConfig{
 		Period:         publishPeriod,
 		MaxDealsPerMsg: 10,
 	}, &api.MessageSendSpec{MaxFee: abi.NewTokenAmount(1)})
@@ -151,7 +196,7 @@ func TestForcePublish(t *testing.T) {
 	dealsToPublish = append(dealsToPublish, deal)
 
 	// Allow a moment for them to be queued
-	time.Sleep(10 * time.Millisecond)
+	build.Clock.Sleep(10 * time.Millisecond)
 
 	// Should be two deals in the pending deals list
 	// (deal with cancelled context is ignored)
@@ -159,7 +204,7 @@ func TestForcePublish(t *testing.T) {
 	require.Len(t, pendingInfo.Deals, 2)
 	require.Equal(t, publishPeriod, pendingInfo.PublishPeriod)
 	require.True(t, pendingInfo.PublishPeriodStart.After(start))
-	require.True(t, pendingInfo.PublishPeriodStart.Before(time.Now()))
+	require.True(t, pendingInfo.PublishPeriodStart.Before(build.Clock.Now()))
 
 	// Force publish all pending deals
 	dp.ForcePublishPendingDeals()
@@ -318,6 +363,22 @@ func (d *dpAPI) StateMinerInfo(ctx context.Context, address address.Address, key
 func (d *dpAPI) MpoolPushMessage(ctx context.Context, msg *types.Message, spec *api.MessageSendSpec) (*types.SignedMessage, error) {
 	d.pushedMsgs <- msg
 	return &types.SignedMessage{Message: *msg}, nil
+}
+
+func (d *dpAPI) WalletBalance(ctx context.Context, a address.Address) (types.BigInt, error) {
+	panic("don't call me")
+}
+
+func (d *dpAPI) WalletHas(ctx context.Context, a address.Address) (bool, error) {
+	panic("don't call me")
+}
+
+func (d *dpAPI) StateAccountKey(ctx context.Context, a address.Address, key types.TipSetKey) (address.Address, error) {
+	panic("don't call me")
+}
+
+func (d *dpAPI) StateLookupID(ctx context.Context, a address.Address, key types.TipSetKey) (address.Address, error) {
+	panic("don't call me")
 }
 
 func getClientActor(t *testing.T) address.Address {

@@ -20,9 +20,15 @@ type Config struct {
 
 	WaitDealsDelay time.Duration
 
+	CommittedCapacitySectorLifetime time.Duration
+
 	AlwaysKeepUnsealedCopy bool
 
 	FinalizeEarly bool
+
+	CollateralFromMinerBalance bool
+	AvailableBalanceBuffer     abi.TokenAmount
+	DisableCollateralFallback  bool
 
 	BatchPreCommits     bool
 	MaxPreCommitBatch   int

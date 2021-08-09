@@ -50,6 +50,7 @@ type ChainModuleAPI interface {
 	ChainGetMessage(ctx context.Context, mc cid.Cid) (*types.Message, error)
 	ChainGetTipSet(ctx context.Context, tsk types.TipSetKey) (*types.TipSet, error)
 	ChainGetTipSetByHeight(ctx context.Context, h abi.ChainEpoch, tsk types.TipSetKey) (*types.TipSet, error)
+	ChainGetTipSetAfterHeight(ctx context.Context, h abi.ChainEpoch, tsk types.TipSetKey) (*types.TipSet, error)
 	ChainReadObj(context.Context, cid.Cid) ([]byte, error)
 }
 
@@ -83,6 +84,9 @@ type ChainAPI struct {
 	// expose externally. In the future, this will be segregated into two
 	// blockstores.
 	ExposedBlockstore dtypes.ExposedBlockstore
+
+	// BaseBlockstore is the underlying blockstore
+	BaseBlockstore dtypes.BaseBlockstore
 }
 
 func (m *ChainModule) ChainNotify(ctx context.Context) (<-chan []*api.HeadChange, error) {
@@ -228,12 +232,47 @@ func (a *ChainAPI) ChainGetParentReceipts(ctx context.Context, bcid cid.Cid) ([]
 	return out, nil
 }
 
+func (a *ChainAPI) ChainGetMessagesInTipset(ctx context.Context, tsk types.TipSetKey) ([]api.Message, error) {
+	ts, err := a.Chain.GetTipSetFromKey(tsk)
+	if err != nil {
+		return nil, err
+	}
+
+	// genesis block has no parent messages...
+	if ts.Height() == 0 {
+		return nil, nil
+	}
+
+	cm, err := a.Chain.MessagesForTipset(ts)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []api.Message
+	for _, m := range cm {
+		out = append(out, api.Message{
+			Cid:     m.Cid(),
+			Message: m.VMMessage(),
+		})
+	}
+
+	return out, nil
+}
+
 func (m *ChainModule) ChainGetTipSetByHeight(ctx context.Context, h abi.ChainEpoch, tsk types.TipSetKey) (*types.TipSet, error) {
 	ts, err := m.Chain.GetTipSetFromKey(tsk)
 	if err != nil {
 		return nil, xerrors.Errorf("loading tipset %s: %w", tsk, err)
 	}
 	return m.Chain.GetTipsetByHeight(ctx, h, ts, true)
+}
+
+func (m *ChainModule) ChainGetTipSetAfterHeight(ctx context.Context, h abi.ChainEpoch, tsk types.TipSetKey) (*types.TipSet, error) {
+	ts, err := m.Chain.GetTipSetFromKey(tsk)
+	if err != nil {
+		return nil, xerrors.Errorf("loading tipset %s: %w", tsk, err)
+	}
+	return m.Chain.GetTipsetByHeight(ctx, h, ts, false)
 }
 
 func (m *ChainModule) ChainReadObj(ctx context.Context, obj cid.Cid) ([]byte, error) {
@@ -616,4 +655,22 @@ func (a *ChainAPI) ChainExport(ctx context.Context, nroots abi.ChainEpoch, skipo
 	}()
 
 	return out, nil
+}
+
+func (a *ChainAPI) ChainCheckBlockstore(ctx context.Context) error {
+	checker, ok := a.BaseBlockstore.(interface{ Check() error })
+	if !ok {
+		return xerrors.Errorf("underlying blockstore does not support health checks")
+	}
+
+	return checker.Check()
+}
+
+func (a *ChainAPI) ChainBlockstoreInfo(ctx context.Context) (map[string]interface{}, error) {
+	info, ok := a.BaseBlockstore.(interface{ Info() map[string]interface{} })
+	if !ok {
+		return nil, xerrors.Errorf("underlying blockstore does not provide info")
+	}
+
+	return info.Info(), nil
 }

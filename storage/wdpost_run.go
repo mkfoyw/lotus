@@ -589,16 +589,13 @@ func (s *WindowPoStScheduler) runPoStCycle(ctx context.Context, di dline.Info, t
 			Proofs:     nil,
 		}
 
-		// 已经跳过的扇区数量
-		skipCount := uint64(0)
-		// 跳过的扇区
 		postSkipped := bitfield.New()
 		somethingToProve := false
 
 		// Retry until we run out of sectors to prove.
 		// 多次尝试生成 windpost
 		for retries := 0; ; retries++ {
-
+			skipCount := uint64(0)
 			var partitions []miner.PoStPartition
 			var sinfos []proof2.SectorInfo
 
@@ -699,6 +696,7 @@ func (s *WindowPoStScheduler) runPoStCycle(ctx context.Context, di dline.Info, t
 
 				if !bytes.Equal(checkRand, rand) {
 					log.Warnw("windowpost randomness changed", "old", rand, "new", checkRand, "ts-height", ts.Height(), "challenge-height", di.Challenge, "tsk", ts.Key())
+					rand = checkRand
 					continue
 				}
 
@@ -744,8 +742,6 @@ func (s *WindowPoStScheduler) runPoStCycle(ctx context.Context, di dline.Info, t
 				return nil, ctx.Err()
 			}
 
-			skipCount += uint64(len(ps))
-			// 设置跳过的扇区
 			for _, sector := range ps {
 				postSkipped.Set(uint64(sector.Number))
 			}

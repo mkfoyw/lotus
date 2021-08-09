@@ -10,6 +10,8 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	miner5 "github.com/filecoin-project/specs-actors/v5/actors/builtin/miner"
 
+	"github.com/filecoin-project/lotus/chain/actors/builtin"
+	"github.com/filecoin-project/lotus/chain/actors/policy"
 	"github.com/filecoin-project/lotus/chain/types"
 	sectorstorage "github.com/filecoin-project/lotus/extern/sector-storage"
 )
@@ -22,244 +24,8 @@ const (
 	RetrievalPricingExternalMode = "external"
 )
 
-// Common is common config between full node and miner
-type Common struct {
-	API    API
-	Backup Backup
-	Libp2p Libp2p
-	Pubsub Pubsub
-}
-
-// FullNode is a full node config
-type FullNode struct {
-	Common
-	Client     Client
-	Metrics    Metrics
-	Wallet     Wallet
-	Fees       FeeConfig
-	Chainstore Chainstore
-}
-
-// // Common
-
-type Backup struct {
-	DisableMetadataLog bool
-}
-
-// StorageMiner is a miner config
-type StorageMiner struct {
-	Common
-
-	Dealmaking DealmakingConfig
-	Sealing    SealingConfig
-	Storage    sectorstorage.SealerConfig
-	Fees       MinerFeeConfig
-	Addresses  MinerAddressConfig
-}
-
-type DealmakingConfig struct {
-	ConsiderOnlineStorageDeals     bool
-	ConsiderOfflineStorageDeals    bool
-	ConsiderOnlineRetrievalDeals   bool
-	ConsiderOfflineRetrievalDeals  bool
-	ConsiderVerifiedStorageDeals   bool
-	ConsiderUnverifiedStorageDeals bool
-	PieceCidBlocklist              []cid.Cid
-	ExpectedSealDuration           Duration
-	// Maximum amount of time proposed deal StartEpoch can be in future
-	MaxDealStartDelay Duration
-	// The amount of time to wait for more deals to arrive before
-	// publishing
-	PublishMsgPeriod Duration
-	// The maximum number of deals to include in a single PublishStorageDeals
-	// message
-	MaxDealsPerPublishMsg uint64
-	// The maximum collateral that the provider will put up against a deal,
-	// as a multiplier of the minimum collateral bound
-	MaxProviderCollateralMultiplier uint64
-
-	// The maximum number of parallel online data transfers (storage+retrieval)
-	SimultaneousTransfers uint64
-
-	Filter          string
-	RetrievalFilter string
-
-	RetrievalPricing *RetrievalPricing
-}
-
-type RetrievalPricing struct {
-	Strategy string // possible values: "default", "external"
-
-	Default  *RetrievalPricingDefault
-	External *RetrievalPricingExternal
-}
-
-type RetrievalPricingExternal struct {
-	// Path of the external script that will be run to price a retrieval deal.
-	// This parameter is ONLY applicable if the retrieval pricing policy strategy has been configured to "external".
-	Path string
-}
-
-type RetrievalPricingDefault struct {
-	// VerifiedDealsFreeTransfer configures zero fees for data transfer for a retrieval deal
-	// of a payloadCid that belongs to a verified storage deal.
-	// This parameter is ONLY applicable if the retrieval pricing policy strategy has been configured to "default".
-	// default value is true
-	VerifiedDealsFreeTransfer bool
-}
-
-type SealingConfig struct {
-	// 0 = no limit
-	MaxWaitDealsSectors uint64
-
-	// includes failed, 0 = no limit
-	MaxSealingSectors uint64
-
-	// includes failed, 0 = no limit
-	MaxSealingSectorsForDeals uint64
-
-	WaitDealsDelay Duration
-
-	AlwaysKeepUnsealedCopy bool
-
-	// Run sector finalization before submitting sector proof to the chain
-	FinalizeEarly bool
-
-	// enable / disable precommit batching (takes effect after nv13)
-	BatchPreCommits bool
-	// maximum precommit batch size - batches will be sent immediately above this size
-	MaxPreCommitBatch int
-	// how long to wait before submitting a batch after crossing the minimum batch size
-	PreCommitBatchWait Duration
-	// time buffer for forceful batch submission before sectors/deal in batch would start expiring
-	PreCommitBatchSlack Duration
-
-	// enable / disable commit aggregation (takes effect after nv13)
-	AggregateCommits bool
-	// maximum batched commit size - batches will be sent immediately above this size
-	MinCommitBatch int
-	MaxCommitBatch int
-	// how long to wait before submitting a batch after crossing the minimum batch size
-	CommitBatchWait Duration
-	// time buffer for forceful batch submission before sectors/deals in batch would start expiring
-	CommitBatchSlack Duration
-
-	// network BaseFee below which to stop doing commit aggregation, instead
-	// submitting proofs to the chain individually
-	AggregateAboveBaseFee types.FIL
-
-	TerminateBatchMax  uint64
-	TerminateBatchMin  uint64
-	TerminateBatchWait Duration
-
-	// Keep this many sectors in sealing pipeline, start CC if needed
-	// todo TargetSealingSectors uint64
-
-	// todo TargetSectors - stop auto-pleding new sectors after this many sectors are sealed, default CC upgrade for deals sectors if above
-}
-
-type BatchFeeConfig struct {
-	Base      types.FIL
-	PerSector types.FIL
-}
-
 func (b *BatchFeeConfig) FeeForSectors(nSectors int) abi.TokenAmount {
 	return big.Add(big.Int(b.Base), big.Mul(big.NewInt(int64(nSectors)), big.Int(b.PerSector)))
-}
-
-type MinerFeeConfig struct {
-	MaxPreCommitGasFee types.FIL
-	MaxCommitGasFee    types.FIL
-
-	// maxBatchFee = maxBase + maxPerSector * nSectors
-	MaxPreCommitBatchGasFee BatchFeeConfig
-	MaxCommitBatchGasFee    BatchFeeConfig
-
-	MaxTerminateGasFee     types.FIL
-	MaxWindowPoStGasFee    types.FIL
-	MaxPublishDealsFee     types.FIL
-	MaxMarketBalanceAddFee types.FIL
-}
-
-type MinerAddressConfig struct {
-	PreCommitControl []string
-	CommitControl    []string
-	TerminateControl []string
-
-	// DisableOwnerFallback disables usage of the owner address for messages
-	// sent automatically
-	DisableOwnerFallback bool
-	// DisableWorkerFallback disables usage of the worker address for messages
-	// sent automatically, if control addresses are configured.
-	// A control address that doesn't have enough funds will still be chosen
-	// over the worker address if this flag is set.
-	DisableWorkerFallback bool
-}
-
-// API contains configs for API endpoint
-type API struct {
-	ListenAddress       string
-	RemoteListenAddress string
-	Timeout             Duration
-}
-
-// Libp2p contains configs for libp2p
-type Libp2p struct {
-	ListenAddresses     []string
-	AnnounceAddresses   []string
-	NoAnnounceAddresses []string
-	BootstrapPeers      []string
-	ProtectedPeers      []string
-
-	ConnMgrLow   uint
-	ConnMgrHigh  uint
-	ConnMgrGrace Duration
-}
-
-type Pubsub struct {
-	Bootstrapper          bool
-	DirectPeers           []string
-	IPColocationWhitelist []string
-	RemoteTracer          string
-}
-
-type Chainstore struct {
-	EnableSplitstore bool
-	Splitstore       Splitstore
-}
-
-type Splitstore struct {
-	HotStoreType         string
-	TrackingStoreType    string
-	MarkSetType          string
-	EnableFullCompaction bool
-	EnableGC             bool // EXPERIMENTAL
-	Archival             bool
-}
-
-// // Full Node
-
-type Metrics struct {
-	Nickname   string
-	HeadNotifs bool
-}
-
-type Client struct {
-	UseIpfs               bool
-	IpfsOnlineMode        bool
-	IpfsMAddr             string
-	IpfsUseForRetrieval   bool
-	SimultaneousTransfers uint64
-}
-
-type Wallet struct {
-	RemoteBackend string
-	EnableLedger  bool
-	DisableLocal  bool
-}
-
-type FeeConfig struct {
-	DefaultMaxFee types.FIL
 }
 
 func defCommon() Common {
@@ -283,7 +49,6 @@ func defCommon() Common {
 		Pubsub: Pubsub{
 			Bootstrapper: false,
 			DirectPeers:  nil,
-			RemoteTracer: "/dns4/pubsub-tracer.filecoin.io/tcp/4001/p2p/QmTd6UvR47vUidRNZ1ZKXHrAFhqTJAD27rKL9XYghEKgKX",
 		},
 	}
 
@@ -306,7 +71,11 @@ func DefaultFullNode() *FullNode {
 		Chainstore: Chainstore{
 			EnableSplitstore: false,
 			Splitstore: Splitstore{
-				HotStoreType: "badger",
+				ColdStoreType: "universal",
+				HotStoreType:  "badger",
+				MarkSetType:   "map",
+
+				HotStoreFullGCFrequency: 20,
 			},
 		},
 	}
@@ -324,10 +93,16 @@ func DefaultStorageMiner() *StorageMiner {
 			AlwaysKeepUnsealedCopy:    true,
 			FinalizeEarly:             false,
 
+			CollateralFromMinerBalance: false,
+			AvailableBalanceBuffer:     types.FIL(big.Zero()),
+			DisableCollateralFallback:  false,
+
 			BatchPreCommits:     true,
 			MaxPreCommitBatch:   miner5.PreCommitSectorBatchMaxSize, // up to 256 sectors
 			PreCommitBatchWait:  Duration(24 * time.Hour),           // this should be less than 31.5 hours, which is the expiration of a precommit ticket
 			PreCommitBatchSlack: Duration(3 * time.Hour),            // time buffer for forceful batch submission before sectors/deals in batch would start expiring, higher value will lower the chances for message fail due to expiration
+
+			CommittedCapacitySectorLifetime: Duration(builtin.EpochDurationSeconds * policy.GetMaxSectorExpirationExtension()),
 
 			AggregateCommits: true,
 			MinCommitBatch:   miner5.MinAggregatedSectors, // per FIP13, we must have at least four proofs to aggregate, where 4 is the cross over point where aggregation wins out on single provecommit gas costs
@@ -385,6 +160,13 @@ func DefaultStorageMiner() *StorageMiner {
 			},
 		},
 
+		Subsystems: MinerSubsystemConfig{
+			EnableMining:        true,
+			EnableSealing:       true,
+			EnableSectorStorage: true,
+			EnableMarkets:       true,
+		},
+
 		Fees: MinerFeeConfig{
 			MaxPreCommitGasFee: types.MustParseFIL("0.025"),
 			MaxCommitGasFee:    types.MustParseFIL("0.05"),
@@ -405,8 +187,10 @@ func DefaultStorageMiner() *StorageMiner {
 		},
 
 		Addresses: MinerAddressConfig{
-			PreCommitControl: []string{},
-			CommitControl:    []string{},
+			PreCommitControl:   []string{},
+			CommitControl:      []string{},
+			TerminateControl:   []string{},
+			DealPublishControl: []string{},
 		},
 	}
 	cfg.Common.API.ListenAddress = "/ip4/127.0.0.1/tcp/2345/http"

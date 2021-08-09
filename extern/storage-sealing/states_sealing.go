@@ -304,8 +304,6 @@ func (m *Sealing) preCommitParams(ctx statemachine.Context, sector SectorInfo) (
 		return nil, big.Zero(), nil, ctx.Send(SectorSealPreCommit1Failed{xerrors.Errorf("handlePreCommitting: failed to compute pre-commit expiry: %w", err)})
 	}
 
-	// Sectors must last _at least_ MinSectorExpiration + MaxSealDuration.
-	// TODO: The "+10" allows the pre-commit to take 10 blocks to be accepted.
 	nv, err := m.api.StateNetworkVersion(ctx.Context(), tok)
 	if err != nil {
 		return nil, big.Zero(), nil, ctx.Send(SectorSealPreCommit1Failed{xerrors.Errorf("failed to get network version: %w", err)})
@@ -316,7 +314,12 @@ func (m *Sealing) preCommitParams(ctx statemachine.Context, sector SectorInfo) (
 	if minExpiration := sector.TicketEpoch + policy.MaxPreCommitRandomnessLookback + msd + miner.MinSectorExpiration; expiration < minExpiration {
 		expiration = minExpiration
 	}
-	// TODO: enforce a reasonable _maximum_ sector lifetime?
+
+	// Assume: both precommit msg & commit msg land on chain as early as possible
+	maxExpiration := height + policy.GetPreCommitChallengeDelay() + policy.GetMaxSectorExpirationExtension()
+	if expiration > maxExpiration {
+		expiration = maxExpiration
+	}
 
 	params := &miner.SectorPreCommitInfo{
 		Expiration:   expiration,
@@ -357,8 +360,16 @@ func (m *Sealing) handlePreCommitting(ctx statemachine.Context, sector SectorInf
 		}
 	}
 
-	params, deposit, tok, err := m.preCommitParams(ctx, sector)
-	if params == nil || err != nil {
+	params, pcd, tok, err := m.preCommitParams(ctx, sector)
+	if err != nil {
+		return ctx.Send(SectorChainPreCommitFailed{xerrors.Errorf("preCommitParams: %w", err)})
+	}
+	if params == nil {
+		return nil // event was sent in preCommitParams
+	}
+
+	deposit, err := collateralSendAmount(ctx.Context(), m.api, m.maddr, cfg, pcd)
+	if err != nil {
 		return err
 	}
 
@@ -389,7 +400,7 @@ func (m *Sealing) handlePreCommitting(ctx statemachine.Context, sector SectorInf
 		return ctx.Send(SectorChainPreCommitFailed{xerrors.Errorf("pushing message to mpool: %w", err)})
 	}
 
-	return ctx.Send(SectorPreCommitted{Message: mcid, PreCommitDeposit: deposit, PreCommitInfo: *params})
+	return ctx.Send(SectorPreCommitted{Message: mcid, PreCommitDeposit: pcd, PreCommitInfo: *params})
 }
 
 func (m *Sealing) handleSubmitPreCommitBatch(ctx statemachine.Context, sector SectorInfo) error {
@@ -398,8 +409,11 @@ func (m *Sealing) handleSubmitPreCommitBatch(ctx statemachine.Context, sector Se
 	}
 
 	params, deposit, _, err := m.preCommitParams(ctx, sector)
-	if params == nil || err != nil {
+	if err != nil {
 		return ctx.Send(SectorChainPreCommitFailed{xerrors.Errorf("preCommitParams: %w", err)})
+	}
+	if params == nil {
+		return nil // event was sent in preCommitParams
 	}
 
 	res, err := m.precommiter.AddPreCommit(ctx.Context(), sector, deposit, params)
@@ -628,6 +642,11 @@ func (m *Sealing) handleSubmitCommit(ctx statemachine.Context, sector SectorInfo
 		collateral = big.Zero()
 	}
 
+	collateral, err = collateralSendAmount(ctx.Context(), m.api, m.maddr, cfg, collateral)
+	if err != nil {
+		return err
+	}
+
 	goodFunds := big.Add(collateral, big.Int(m.feeCfg.MaxCommitGasFee))
 
 	from, _, err := m.addrSel(ctx.Context(), mi, api.CommitAddr, goodFunds, collateral)
@@ -738,23 +757,4 @@ func (m *Sealing) handleFinalizeSector(ctx statemachine.Context, sector SectorIn
 	}
 
 	return ctx.Send(SectorFinalized{})
-}
-
-func (m *Sealing) handleProvingSector(ctx statemachine.Context, sector SectorInfo) error {
-	// TODO: track sector health / expiration
-	log.Infof("Proving sector %d", sector.SectorNumber)
-
-	cfg, err := m.getConfig()
-	if err != nil {
-		return xerrors.Errorf("getting sealing config: %w", err)
-	}
-
-	if err := m.sealer.ReleaseUnsealed(ctx.Context(), m.minerSector(sector.SectorType, sector.SectorNumber), sector.keepUnsealedRanges(true, cfg.AlwaysKeepUnsealedCopy)); err != nil {
-		log.Error(err)
-	}
-
-	// TODO: Watch termination
-	// TODO: Auto-extend if set
-
-	return nil
 }

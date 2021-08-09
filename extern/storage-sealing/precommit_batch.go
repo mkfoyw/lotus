@@ -7,9 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/filecoin-project/lotus/build"
-	"github.com/filecoin-project/lotus/chain/actors/policy"
-
 	"github.com/ipfs/go-cid"
 	"golang.org/x/xerrors"
 
@@ -20,7 +17,9 @@ import (
 	miner5 "github.com/filecoin-project/specs-actors/v5/actors/builtin/miner"
 
 	"github.com/filecoin-project/lotus/api"
+	"github.com/filecoin-project/lotus/build"
 	"github.com/filecoin-project/lotus/chain/actors/builtin/miner"
+	"github.com/filecoin-project/lotus/chain/actors/policy"
 	"github.com/filecoin-project/lotus/extern/storage-sealing/sealiface"
 	"github.com/filecoin-project/lotus/node/config"
 )
@@ -30,6 +29,7 @@ import (
 type PreCommitBatcherApi interface {
 	SendMsg(ctx context.Context, from, to address.Address, method abi.MethodNum, value, maxFee abi.TokenAmount, params []byte) (cid.Cid, error)
 	StateMinerInfo(context.Context, address.Address, TipSetToken) (miner.MinerInfo, error)
+	StateMinerAvailableBalance(context.Context, address.Address, TipSetToken) (big.Int, error)
 	ChainHead(ctx context.Context) (TipSetToken, abi.ChainEpoch, error)
 }
 
@@ -256,7 +256,11 @@ func (b *PreCommitBatcher) processBatch(cfg sealiface.Config) ([]sealiface.PreCo
 		deposit = big.Add(deposit, p.deposit)
 	}
 
-	// 序列化消息参数
+	deposit, err := collateralSendAmount(b.mctx, b.api, b.maddr, cfg, deposit)
+	if err != nil {
+		return []sealiface.PreCommitBatchRes{res}, err
+	}
+
 	enc := new(bytes.Buffer)
 	if err := params.MarshalCBOR(enc); err != nil {
 		return []sealiface.PreCommitBatchRes{res}, xerrors.Errorf("couldn't serialize PreCommitSectorBatchParams: %w", err)
